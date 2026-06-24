@@ -37,7 +37,6 @@ import io.element.android.features.messages.impl.attachments.Attachment
 import io.element.android.features.messages.impl.attachments.Attachment.Media
 import io.element.android.features.messages.impl.attachments.preview.error.sendAttachmentError
 import io.element.android.features.messages.impl.draft.ComposerDraftService
-import io.element.android.features.messages.impl.messagecomposer.suggestions.MyClawCommandSuggestionsDataSource
 import io.element.android.features.messages.impl.messagecomposer.suggestions.RoomAliasSuggestionsDataSource
 import io.element.android.features.messages.impl.messagecomposer.suggestions.SuggestionsProcessor
 import io.element.android.features.messages.impl.timeline.TimelineController
@@ -101,7 +100,6 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
@@ -150,7 +148,6 @@ class MessageComposerPresenter(
 
     private val isInThread = threadRoot != null
     private val mediaSender = mediaSenderFactory.create(timelineMode = timelineController.mainTimelineMode())
-    private val myClawCommandSuggestionsDataSource = MyClawCommandSuggestionsDataSource(room)
 
     private val cameraPermissionPresenter = permissionsPresenterFactory.create(Manifest.permission.CAMERA)
     private var pendingEvent: MessageComposerEvent? = null
@@ -217,18 +214,7 @@ class MessageComposerPresenter(
 
         val suggestions = remember { mutableStateListOf<ResolvedSuggestion>() }
         val discoveredCommandSuggestionsFlow = remember {
-            flow {
-                val commandSuggestions = myClawCommandSuggestionsDataSource.getSuggestions()
-                    .getOrElse {
-                        Timber.w(it, "Failed to retrieve MyClaw command state events")
-                        emptyList()
-                    }
-                emit(commandSuggestions)
-            }.stateIn(
-                sessionCoroutineScope,
-                SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
-                emptyList()
-            )
+            MutableStateFlow(emptyList<SlashCommandSuggestion>())
         }
         val discoveredCommandSuggestions by discoveredCommandSuggestionsFlow.collectAsState()
         ResolveSuggestionsEffect(

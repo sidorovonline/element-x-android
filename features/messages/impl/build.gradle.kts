@@ -74,7 +74,6 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
     implementation(libs.sigpwned.emoji4j)
-    implementation(libs.serialization.json)
     implementation(libs.vanniktech.blurhash)
     implementation(libs.telephoto.zoomableimage)
     implementation(libs.matrix.emojibase.bindings)

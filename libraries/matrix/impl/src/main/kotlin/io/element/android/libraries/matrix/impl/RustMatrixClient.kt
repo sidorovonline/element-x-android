@@ -242,7 +242,6 @@ class RustMatrixClient(
         roomInfoMapper = roomInfoMapper,
         featureFlagService = featureFlagService,
         analyticsService = analyticsService,
-        sessionDataProvider = { sessionStore.getSession(sessionId.value) },
     )
 
     override val matrixMediaLoader: MatrixMediaLoader = RustMediaLoader(

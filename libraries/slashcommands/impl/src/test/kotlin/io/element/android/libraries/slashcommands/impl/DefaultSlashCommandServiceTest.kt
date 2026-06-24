@@ -77,6 +77,29 @@ class DefaultSlashCommandServiceTest {
     }
 
     @Test
+    fun `getSuggestions includes matching discovered commands when the feature is disabled`() = runTest {
+        val sut = createDefaultSlashCommandService(isFeatureEnabled = false)
+        val all = sut.getSuggestions(
+            text = "sta",
+            isInThread = false,
+            discoveredCommands = listOf(
+                SlashCommandSuggestion(
+                    command = "/status",
+                    parameters = "[--json]",
+                    description = "Show MyClaw state",
+                ),
+                SlashCommandSuggestion(
+                    command = "/resume",
+                    parameters = null,
+                    description = "Resume MyClaw",
+                ),
+            ),
+        )
+
+        assertThat(all.map { it.command }).containsExactly("/status")
+    }
+
+    @Test
     fun `getSuggestions for aliases`() = runTest {
         val stringProvider = FakeStringProvider()
         val prefs = InMemoryAppPreferencesStore(isDeveloperModeEnabled = false)

@@ -24,7 +24,6 @@ import io.element.android.libraries.matrix.api.roomlist.awaitLoaded
 import io.element.android.libraries.matrix.impl.room.join.map
 import io.element.android.libraries.matrix.impl.room.preview.RoomPreviewInfoMapper
 import io.element.android.libraries.matrix.impl.roomlist.roomOrNull
-import io.element.android.libraries.sessionstorage.api.SessionData
 import io.element.android.services.analytics.api.AnalyticsLongRunningTransaction
 import io.element.android.services.analytics.api.AnalyticsService
 import io.element.android.services.analytics.api.recordTransaction
@@ -64,7 +63,6 @@ class RustRoomFactory(
     private val roomMembershipObserver: RoomMembershipObserver,
     private val roomInfoMapper: RoomInfoMapper,
     private val analyticsService: AnalyticsService,
-    private val sessionDataProvider: suspend () -> SessionData?,
 ) {
     private val dispatcher = dispatchers.computation.limitedParallelism(1)
     private val mutex = Mutex()
@@ -100,7 +98,6 @@ class RustRoomFactory(
         roomInfoMapper = roomInfoMapper,
         initialRoomInfo = roomInfoMapper.map(roomInfo),
         sessionCoroutineScope = sessionCoroutineScope,
-        sessionDataProvider = sessionDataProvider,
     )
 
     suspend fun getJoinedRoomOrPreview(roomId: RoomId, serverNames: List<String>): GetRoomResult? = withContext(dispatcher) {

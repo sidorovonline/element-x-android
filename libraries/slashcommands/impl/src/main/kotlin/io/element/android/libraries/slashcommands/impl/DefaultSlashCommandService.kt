@@ -36,43 +36,46 @@ class DefaultSlashCommandService(
         isInThread: Boolean,
         discoveredCommands: List<SlashCommandSuggestion>,
     ): List<SlashCommandSuggestion> {
-        if (!featureFlagService.isFeatureEnabled(FeatureFlags.SlashCommand)) return emptyList()
-        val isDeveloperModeEnabled = appPreferencesStore.isDeveloperModeEnabledFlow().first()
-        val builtInSuggestions = Command.entries
-            .asSequence()
-            .filter { it.startsWith(text) }
-            .filter { !isInThread || it.isAllowedInThread }
-            .filter { !it.isDevCommand || isDeveloperModeEnabled }
-            // Don't include the change display name commands if the user can't change their display name
-            .run {
-                val canUserChangeDisplayName = withTimeoutOrNull(5.seconds) {
-                    capabilitiesProvider.canChangeDisplayName().getOrNull()
-                } ?: false
-                if (!canUserChangeDisplayName) {
-                    filterNot { it == Command.CHANGE_DISPLAY_NAME || it == Command.CHANGE_DISPLAY_NAME_FOR_ROOM }
-                } else {
-                    this
+        val builtInSuggestions = if (featureFlagService.isFeatureEnabled(FeatureFlags.SlashCommand)) {
+            val isDeveloperModeEnabled = appPreferencesStore.isDeveloperModeEnabledFlow().first()
+            Command.entries
+                .asSequence()
+                .filter { it.startsWith(text) }
+                .filter { !isInThread || it.isAllowedInThread }
+                .filter { !it.isDevCommand || isDeveloperModeEnabled }
+                // Don't include the change display name commands if the user can't change their display name
+                .run {
+                    val canUserChangeDisplayName = withTimeoutOrNull(5.seconds) {
+                        capabilitiesProvider.canChangeDisplayName().getOrNull()
+                    } ?: false
+                    if (!canUserChangeDisplayName) {
+                        filterNot { it == Command.CHANGE_DISPLAY_NAME || it == Command.CHANGE_DISPLAY_NAME_FOR_ROOM }
+                    } else {
+                        this
+                    }
                 }
-            }
-            // Don't include the change avatar commands if the user can't change their avatar url
-            .run {
-                val canUserChangeAvatar = withTimeoutOrNull(5.seconds) {
-                    capabilitiesProvider.canChangeAvatarUrl().getOrNull()
-                } ?: false
-                if (!canUserChangeAvatar) {
-                    filterNot { it == Command.CHANGE_AVATAR || it == Command.CHANGE_AVATAR_FOR_ROOM }
-                } else {
-                    this
+                // Don't include the change avatar commands if the user can't change their avatar url
+                .run {
+                    val canUserChangeAvatar = withTimeoutOrNull(5.seconds) {
+                        capabilitiesProvider.canChangeAvatarUrl().getOrNull()
+                    } ?: false
+                    if (!canUserChangeAvatar) {
+                        filterNot { it == Command.CHANGE_AVATAR || it == Command.CHANGE_AVATAR_FOR_ROOM }
+                    } else {
+                        this
+                    }
                 }
-            }
-            .map {
-                SlashCommandSuggestion(
-                    command = it.command,
-                    parameters = it.parameters,
-                    description = stringProvider.getString(it.description),
-                )
-            }
-            .toList()
+                .map {
+                    SlashCommandSuggestion(
+                        command = it.command,
+                        parameters = it.parameters,
+                        description = stringProvider.getString(it.description),
+                    )
+                }
+                .toList()
+        } else {
+            emptyList()
+        }
         val builtInNames = builtInSuggestions.mapTo(mutableSetOf()) { it.command.removePrefix("/").lowercase() }
         val filteredDiscoveredCommands = discoveredCommands
             .filter { it.command.removePrefix("/").startsWith(text, ignoreCase = true) }
