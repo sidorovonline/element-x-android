@@ -37,6 +37,7 @@ import io.element.android.features.messages.impl.attachments.Attachment
 import io.element.android.features.messages.impl.attachments.Attachment.Media
 import io.element.android.features.messages.impl.attachments.preview.error.sendAttachmentError
 import io.element.android.features.messages.impl.draft.ComposerDraftService
+import io.element.android.features.messages.impl.messagecomposer.suggestions.MyClawCommandSuggestionsDataSource
 import io.element.android.features.messages.impl.messagecomposer.suggestions.RoomAliasSuggestionsDataSource
 import io.element.android.features.messages.impl.messagecomposer.suggestions.SuggestionsProcessor
 import io.element.android.features.messages.impl.timeline.TimelineController
@@ -73,6 +74,7 @@ import io.element.android.libraries.preferences.api.store.SessionPreferencesStor
 import io.element.android.libraries.push.api.notifications.conversations.NotificationConversationService
 import io.element.android.libraries.slashcommands.api.SlashCommand
 import io.element.android.libraries.slashcommands.api.SlashCommandService
+import io.element.android.libraries.slashcommands.api.SlashCommandSuggestion
 import io.element.android.libraries.slashcommands.api.message
 import io.element.android.libraries.textcomposer.mentions.MentionSpanProvider
 import io.element.android.libraries.textcomposer.mentions.ResolvedSuggestion
@@ -92,12 +94,15 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -145,6 +150,7 @@ class MessageComposerPresenter(
 
     private val isInThread = threadRoot != null
     private val mediaSender = mediaSenderFactory.create(timelineMode = timelineController.mainTimelineMode())
+    private val myClawCommandSuggestionsDataSource = MyClawCommandSuggestionsDataSource(room)
 
     private val cameraPermissionPresenter = permissionsPresenterFactory.create(Manifest.permission.CAMERA)
     private var pendingEvent: MessageComposerEvent? = null
@@ -210,7 +216,25 @@ class MessageComposerPresenter(
         }
 
         val suggestions = remember { mutableStateListOf<ResolvedSuggestion>() }
-        ResolveSuggestionsEffect(suggestions)
+        val discoveredCommandSuggestionsFlow = remember {
+            flow {
+                val commandSuggestions = myClawCommandSuggestionsDataSource.getSuggestions()
+                    .getOrElse {
+                        Timber.w(it, "Failed to retrieve MyClaw command state events")
+                        emptyList()
+                    }
+                emit(commandSuggestions)
+            }.stateIn(
+                sessionCoroutineScope,
+                SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+                emptyList()
+            )
+        }
+        val discoveredCommandSuggestions by discoveredCommandSuggestionsFlow.collectAsState()
+        ResolveSuggestionsEffect(
+            suggestions = suggestions,
+            discoveredCommandSuggestionsFlow = discoveredCommandSuggestionsFlow,
+        )
 
         DisposableEffect(Unit) {
             // Declare that the user is not typing anymore when the composer is disposed
@@ -261,6 +285,9 @@ class MessageComposerPresenter(
                         markdownTextEditorState = markdownTextEditorState,
                         richTextEditorState = richTextEditorState,
                         slashCommandAction = slashCommandAction,
+                        discoveredCommandNames = discoveredCommandSuggestions.mapTo(mutableSetOf()) {
+                            it.command.removePrefix("/").lowercase()
+                        },
                     )
                 }
                 is MessageComposerEvent.SendUri -> {
@@ -415,6 +442,7 @@ class MessageComposerPresenter(
     @Composable
     private fun ResolveSuggestionsEffect(
         suggestions: SnapshotStateList<ResolvedSuggestion>,
+        discoveredCommandSuggestionsFlow: Flow<List<SlashCommandSuggestion>>,
     ) {
         LaunchedEffect(Unit) {
             val currentUserId = room.sessionId
@@ -436,8 +464,12 @@ class MessageComposerPresenter(
             val roomAliasSuggestionsFlow = roomAliasSuggestionsDataSource
                 .getAllRoomAliasSuggestions()
                 .stateIn(this, SharingStarted.Lazily, emptyList())
-
-            combine(mentionTriggerFlow, room.membersStateFlow, roomAliasSuggestionsFlow) { suggestion, roomMembersState, roomAliasSuggestions ->
+            combine(
+                mentionTriggerFlow,
+                room.membersStateFlow,
+                roomAliasSuggestionsFlow,
+                discoveredCommandSuggestionsFlow,
+            ) { suggestion, roomMembersState, roomAliasSuggestions, discoveredCommandSuggestions ->
                 val result = suggestionsProcessor.process(
                     suggestion = suggestion,
                     roomMembersState = roomMembersState,
@@ -445,6 +477,7 @@ class MessageComposerPresenter(
                     currentUserId = currentUserId,
                     canSendRoomMention = ::canSendRoomMention,
                     isInThread = isInThread,
+                    discoveredCommandSuggestions = discoveredCommandSuggestions,
                 )
                 suggestions.clear()
                 suggestions.addAll(result)
@@ -457,6 +490,7 @@ class MessageComposerPresenter(
         markdownTextEditorState: MarkdownTextEditorState,
         richTextEditorState: RichTextEditorState,
         slashCommandAction: MutableState<AsyncAction<Unit>>,
+        discoveredCommandNames: Set<String>,
     ) = launch {
         val message = currentComposerMessage(markdownTextEditorState, richTextEditorState, withMentions = true)
         val capturedMode = messageComposerContext.composerMode
@@ -466,6 +500,7 @@ class MessageComposerPresenter(
                 textMessage = message.markdown,
                 formattedMessage = message.html,
                 isInThreadTimeline = isInThread,
+                discoveredCommandNames = discoveredCommandNames,
             )
         } else {
             SlashCommand.NotACommand

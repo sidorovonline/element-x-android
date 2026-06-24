@@ -41,6 +41,7 @@ class CommandParser(
         textMessage: CharSequence,
         formattedMessage: String?,
         isInThreadTimeline: Boolean,
+        discoveredCommandNames: Set<String> = emptySet(),
     ): SlashCommand {
         if (!featureFlagService.isFeatureEnabled(FeatureFlags.SlashCommand)) {
             return SlashCommand.NotACommand
@@ -340,6 +341,9 @@ class CommandParser(
                 }
                 Command.CRASH_APP.matches(slashCommand) && appPreferencesStore.isDeveloperModeEnabledFlow().first() -> {
                     error("Application crashed from user demand")
+                }
+                slashCommand.removePrefix("/").lowercase() in discoveredCommandNames -> {
+                    SlashCommand.NotACommand
                 }
                 else -> {
                     // Unknown command

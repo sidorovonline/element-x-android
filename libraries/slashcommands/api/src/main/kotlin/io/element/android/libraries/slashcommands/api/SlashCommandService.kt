@@ -13,6 +13,7 @@ interface SlashCommandService {
     suspend fun getSuggestions(
         text: String,
         isInThread: Boolean,
+        discoveredCommands: List<SlashCommandSuggestion> = emptyList(),
     ): List<SlashCommandSuggestion>
 
     /**
@@ -22,6 +23,7 @@ interface SlashCommandService {
         textMessage: CharSequence,
         formattedMessage: String?,
         isInThreadTimeline: Boolean,
+        discoveredCommandNames: Set<String> = emptySet(),
     ): SlashCommand
 
     /**

@@ -34,10 +34,11 @@ class DefaultSlashCommandService(
     override suspend fun getSuggestions(
         text: String,
         isInThread: Boolean,
+        discoveredCommands: List<SlashCommandSuggestion>,
     ): List<SlashCommandSuggestion> {
         if (!featureFlagService.isFeatureEnabled(FeatureFlags.SlashCommand)) return emptyList()
         val isDeveloperModeEnabled = appPreferencesStore.isDeveloperModeEnabledFlow().first()
-        return Command.entries
+        val builtInSuggestions = Command.entries
             .asSequence()
             .filter { it.startsWith(text) }
             .filter { !isInThread || it.isAllowedInThread }
@@ -72,17 +73,24 @@ class DefaultSlashCommandService(
                 )
             }
             .toList()
+        val builtInNames = builtInSuggestions.mapTo(mutableSetOf()) { it.command.removePrefix("/").lowercase() }
+        val filteredDiscoveredCommands = discoveredCommands
+            .filter { it.command.removePrefix("/").startsWith(text, ignoreCase = true) }
+            .filterNot { it.command.removePrefix("/").lowercase() in builtInNames }
+        return builtInSuggestions + filteredDiscoveredCommands
     }
 
     override suspend fun parse(
         textMessage: CharSequence,
         formattedMessage: String?,
         isInThreadTimeline: Boolean,
+        discoveredCommandNames: Set<String>,
     ): SlashCommand {
         return commandParser.parseSlashCommand(
             textMessage = textMessage,
             formattedMessage = formattedMessage,
             isInThreadTimeline = isInThreadTimeline,
+            discoveredCommandNames = discoveredCommandNames.normalizedCommandNames(),
         )
     }
 
@@ -102,5 +110,9 @@ class DefaultSlashCommandService(
         return commandExecutor.proceedAdmin(
             slashCommand = slashCommand,
         )
+    }
+
+    private fun Set<String>.normalizedCommandNames(): Set<String> {
+        return mapTo(mutableSetOf()) { it.removePrefix("/").lowercase() }
     }
 }

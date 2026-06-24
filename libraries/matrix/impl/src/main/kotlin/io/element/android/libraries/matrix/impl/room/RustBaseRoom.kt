@@ -22,6 +22,7 @@ import io.element.android.libraries.matrix.api.room.RoomInfo
 import io.element.android.libraries.matrix.api.room.RoomMember
 import io.element.android.libraries.matrix.api.room.RoomMembersState
 import io.element.android.libraries.matrix.api.room.RoomMembershipObserver
+import io.element.android.libraries.matrix.api.room.RoomStateEvent
 import io.element.android.libraries.matrix.api.room.draft.ComposerDraft
 import io.element.android.libraries.matrix.api.room.powerlevels.RoomPermissions
 import io.element.android.libraries.matrix.api.room.powerlevels.RoomPowerLevelsValues
@@ -37,6 +38,7 @@ import io.element.android.libraries.matrix.impl.room.tombstone.map
 import io.element.android.libraries.matrix.impl.roomdirectory.map
 import io.element.android.libraries.matrix.impl.timeline.toRustReceiptType
 import io.element.android.libraries.matrix.impl.util.mxCallbackFlow
+import io.element.android.libraries.sessionstorage.api.SessionData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
@@ -44,11 +46,22 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.matrix.rustcomponents.sdk.CallDeclineListener
 import org.matrix.rustcomponents.sdk.RoomInfoListener
 import org.matrix.rustcomponents.sdk.use
 import timber.log.Timber
 import uniffi.matrix_sdk_base.EncryptionState
+import java.net.HttpURLConnection
+import java.net.URLEncoder
+import java.net.URL
+import java.nio.charset.StandardCharsets
 import org.matrix.rustcomponents.sdk.Room as InnerRoom
 
 class RustBaseRoom(
@@ -61,6 +74,7 @@ class RustBaseRoom(
     sessionCoroutineScope: CoroutineScope,
     roomInfoMapper: RoomInfoMapper,
     initialRoomInfo: RoomInfo,
+    private val sessionDataProvider: suspend () -> SessionData?,
 ) : BaseRoom {
     override val roomId = RoomId(innerRoom.id())
 
@@ -298,5 +312,67 @@ class RustBaseRoom(
                 it.threadRootEventId()?.let(::ThreadId)
             }
         }
+    }
+
+    override suspend fun getCurrentStateEvents(eventType: String): Result<List<RoomStateEvent>> = withContext(roomDispatcher) {
+        runCatchingExceptions {
+            val sessionData = checkNotNull(sessionDataProvider()) { "No session data available" }
+            val url = "${sessionData.homeserverUrl.trimEnd('/')}/_matrix/client/v3/rooms/${roomId.value.encodePathSegment()}/state"
+            Json.decodeFromString<JsonArray>(authenticatedGet(url, sessionData.accessToken))
+                .mapNotNull { stateEvent ->
+                    runCatching { stateEvent.jsonObject.toRoomStateEvent() }.getOrNull()
+                }
+                .filter { stateEvent ->
+                    stateEvent.type == eventType
+                }
+        }
+    }
+
+    private fun JsonObject.toRoomStateEvent(): RoomStateEvent? {
+        val type = stringField("type") ?: return null
+        val stateKey = stringField("state_key") ?: return null
+        val content = get("content")?.toString() ?: return null
+        return RoomStateEvent(
+            type = type,
+            stateKey = stateKey,
+            content = content,
+        )
+    }
+
+    private fun JsonObject.stringField(name: String): String? {
+        return runCatching { get(name)?.jsonPrimitive?.contentOrNull }.getOrNull()
+    }
+
+    private fun String.encodePathSegment(): String {
+        return URLEncoder.encode(this, StandardCharsets.UTF_8.name()).replace("+", "%20")
+    }
+
+    private fun authenticatedGet(url: String, accessToken: String): String {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = STATE_EVENT_REQUEST_TIMEOUT_MILLIS
+            readTimeout = STATE_EVENT_REQUEST_TIMEOUT_MILLIS
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("Authorization", "Bearer $accessToken")
+        }
+        return try {
+            val responseCode = connection.responseCode
+            val stream = if (responseCode in 200..299) {
+                connection.inputStream
+            } else {
+                connection.errorStream ?: error("Could not fetch room state, HTTP $responseCode")
+            }
+            val response = stream.use { it.readBytes().decodeToString() }
+            if (responseCode !in 200..299) {
+                error("Could not fetch room state, HTTP $responseCode")
+            }
+            response
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    companion object {
+        private const val STATE_EVENT_REQUEST_TIMEOUT_MILLIS = 10_000
     }
 }

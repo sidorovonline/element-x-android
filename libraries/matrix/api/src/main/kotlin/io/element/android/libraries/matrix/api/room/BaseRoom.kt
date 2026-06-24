@@ -214,6 +214,11 @@ interface BaseRoom : Closeable {
     suspend fun threadRootIdForEvent(eventId: EventId): Result<ThreadId?>
 
     /**
+     * Gets current room state events for the provided [eventType], across all state keys.
+     */
+    suspend fun getCurrentStateEvents(eventType: String): Result<List<RoomStateEvent>>
+
+    /**
      * Destroy the room and release all resources associated to it.
      */
     fun destroy()

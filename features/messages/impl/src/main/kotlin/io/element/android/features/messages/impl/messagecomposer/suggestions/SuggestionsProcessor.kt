@@ -16,6 +16,7 @@ import io.element.android.libraries.matrix.api.room.RoomMembersState
 import io.element.android.libraries.matrix.api.room.RoomMembershipState
 import io.element.android.libraries.matrix.api.room.roomMembers
 import io.element.android.libraries.slashcommands.api.SlashCommandService
+import io.element.android.libraries.slashcommands.api.SlashCommandSuggestion
 import io.element.android.libraries.textcomposer.mentions.ResolvedSuggestion
 import io.element.android.libraries.textcomposer.model.Suggestion
 import io.element.android.libraries.textcomposer.model.SuggestionType
@@ -35,6 +36,7 @@ class SuggestionsProcessor(
      *  @param currentUserId The current user id
      *  @param canSendRoomMention Should return true if the current user can send room mentions
      *  @param isInThread Whether the composer is in a thread or not, used to filter slash commands suggestions
+     *  @param discoveredCommandSuggestions Slash command metadata discovered from room state events
      *  @return The list of suggestions to display
      */
     suspend fun process(
@@ -44,6 +46,7 @@ class SuggestionsProcessor(
         currentUserId: UserId,
         canSendRoomMention: suspend () -> Boolean,
         isInThread: Boolean,
+        discoveredCommandSuggestions: List<SlashCommandSuggestion> = emptyList(),
     ): List<ResolvedSuggestion> {
         suggestion ?: return emptyList()
         return when (suggestion.type) {
@@ -77,7 +80,11 @@ class SuggestionsProcessor(
             SuggestionType.Command -> {
                 // Command suggestions are valid only if this is the beginning of the message
                 if (suggestion.start == 0) {
-                    slashCommandService.getSuggestions(suggestion.text, isInThread).map {
+                    slashCommandService.getSuggestions(
+                        text = suggestion.text,
+                        isInThread = isInThread,
+                        discoveredCommands = discoveredCommandSuggestions,
+                    ).map {
                         ResolvedSuggestion.Command(it)
                     }
                 } else {

@@ -77,6 +77,33 @@ class SuggestionsProcessorTest {
     }
 
     @Test
+    fun `processing Command passes discovered command suggestions to slash service`() = runTest {
+        val discoveredCommand = SlashCommandSuggestion(
+            command = "/status",
+            parameters = "[--json]",
+            description = "Show MyClaw state",
+        )
+        val suggestionsProcessorWithCommand = SuggestionsProcessor(
+            slashCommandService = FakeSlashCommandService(
+                getSuggestionsWithDiscoveredResult = { _, _, discoveredCommands ->
+                    discoveredCommands
+                },
+            ),
+        )
+        val result = suggestionsProcessorWithCommand.process(
+            suggestion = Suggestion(0, 1, SuggestionType.Command, "sta"),
+            roomMembersState = RoomMembersState.Ready(persistentListOf(aRoomMember())),
+            roomAliasSuggestions = emptyList(),
+            currentUserId = A_USER_ID,
+            canSendRoomMention = { true },
+            isInThread = false,
+            discoveredCommandSuggestions = listOf(discoveredCommand),
+        )
+
+        assertThat(result).containsExactly(ResolvedSuggestion.Command(discoveredCommand))
+    }
+
+    @Test
     fun `processing Command will return empty list if start of suggestion is not 0`() = runTest {
         val suggestionsProcessorWithCommand = SuggestionsProcessor(
             slashCommandService = FakeSlashCommandService(

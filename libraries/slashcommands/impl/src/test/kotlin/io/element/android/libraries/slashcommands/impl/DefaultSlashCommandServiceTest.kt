@@ -21,6 +21,7 @@ import io.element.android.libraries.matrix.test.timeline.FakeTimeline
 import io.element.android.libraries.preferences.api.store.AppPreferencesStore
 import io.element.android.libraries.preferences.test.InMemoryAppPreferencesStore
 import io.element.android.libraries.slashcommands.api.SlashCommand
+import io.element.android.libraries.slashcommands.api.SlashCommandSuggestion
 import io.element.android.libraries.slashcommands.impl.rainbow.RainbowGenerator
 import io.element.android.services.toolbox.api.strings.StringProvider
 import io.element.android.services.toolbox.test.strings.FakeStringProvider
@@ -95,10 +96,88 @@ class DefaultSlashCommandServiceTest {
     }
 
     @Test
+    fun `getSuggestions includes matching discovered commands`() = runTest {
+        val sut = createDefaultSlashCommandService()
+        val all = sut.getSuggestions(
+            text = "sta",
+            isInThread = false,
+            discoveredCommands = listOf(
+                SlashCommandSuggestion(
+                    command = "/status",
+                    parameters = "[--json]",
+                    description = "Show MyClaw state",
+                ),
+                SlashCommandSuggestion(
+                    command = "/resume",
+                    parameters = null,
+                    description = "Resume MyClaw",
+                ),
+            ),
+        )
+
+        assertThat(all.map { it.command }).contains("/status")
+        assertThat(all.map { it.command }).doesNotContain("/resume")
+    }
+
+    @Test
+    fun `getSuggestions lets built in commands win discovered name collisions`() = runTest {
+        val sut = createDefaultSlashCommandService()
+        val all = sut.getSuggestions(
+            text = "me",
+            isInThread = false,
+            discoveredCommands = listOf(
+                SlashCommandSuggestion(
+                    command = "/me",
+                    parameters = null,
+                    description = "Discovered duplicate",
+                ),
+            ),
+        )
+
+        assertThat(all.filter { it.command == "/me" }).hasSize(1)
+        assertThat(all.first { it.command == "/me" }.description).isNotEqualTo("Discovered duplicate")
+    }
+
+    @Test
     fun `parse delegates to commandParser`() = runTest {
         val sut = createDefaultSlashCommandService()
         val res = sut.parse("test", null, false)
         assertThat(res).isEqualTo(SlashCommand.NotACommand)
+    }
+
+    @Test
+    fun `parse lets discovered slash commands pass through as normal messages`() = runTest {
+        val sut = createDefaultSlashCommandService()
+
+        val discovered = sut.parse(
+            textMessage = "/status --json",
+            formattedMessage = null,
+            isInThreadTimeline = false,
+            discoveredCommandNames = setOf("/STATUS"),
+        )
+        val unknown = sut.parse(
+            textMessage = "/unknown",
+            formattedMessage = null,
+            isInThreadTimeline = false,
+            discoveredCommandNames = setOf("status"),
+        )
+
+        assertThat(discovered).isEqualTo(SlashCommand.NotACommand)
+        assertThat(unknown).isInstanceOf(SlashCommand.ErrorUnknownSlashCommand::class.java)
+    }
+
+    @Test
+    fun `parse lets mixed-case discovered slash commands pass through as normal messages`() = runTest {
+        val sut = createDefaultSlashCommandService()
+
+        val discovered = sut.parse(
+            textMessage = "/Status --json",
+            formattedMessage = null,
+            isInThreadTimeline = false,
+            discoveredCommandNames = setOf("/Status"),
+        )
+
+        assertThat(discovered).isEqualTo(SlashCommand.NotACommand)
     }
 
     @Test

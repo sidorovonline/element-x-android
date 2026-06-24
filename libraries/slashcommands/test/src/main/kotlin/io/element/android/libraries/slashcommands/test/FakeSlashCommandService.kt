@@ -16,20 +16,29 @@ import io.element.android.tests.testutils.simulateLongTask
 
 class FakeSlashCommandService(
     private val getSuggestionsResult: (String, Boolean) -> List<SlashCommandSuggestion> = { _, _ -> lambdaError() },
+    private val getSuggestionsWithDiscoveredResult: ((String, Boolean, List<SlashCommandSuggestion>) -> List<SlashCommandSuggestion>)? = null,
     private val parseResult: (CharSequence, String?, Boolean) -> SlashCommand = { _, _, _ -> lambdaError() },
+    private val parseWithDiscoveredResult: ((CharSequence, String?, Boolean, Set<String>) -> SlashCommand)? = null,
     private val proceedSendMessageResult: (SlashCommand.SlashCommandSendMessage, Timeline) -> Result<Unit> = { _, _ -> lambdaError() },
     private val proceedAdminResult: (SlashCommand.SlashCommandAdmin) -> Result<Unit> = { lambdaError() },
 ) : SlashCommandService {
-    override suspend fun getSuggestions(text: String, isInThread: Boolean): List<SlashCommandSuggestion> = simulateLongTask {
-        getSuggestionsResult(text, isInThread)
+    override suspend fun getSuggestions(
+        text: String,
+        isInThread: Boolean,
+        discoveredCommands: List<SlashCommandSuggestion>,
+    ): List<SlashCommandSuggestion> = simulateLongTask {
+        getSuggestionsWithDiscoveredResult?.invoke(text, isInThread, discoveredCommands)
+            ?: getSuggestionsResult(text, isInThread)
     }
 
     override suspend fun parse(
         textMessage: CharSequence,
         formattedMessage: String?,
         isInThreadTimeline: Boolean,
+        discoveredCommandNames: Set<String>,
     ): SlashCommand = simulateLongTask {
-        parseResult(textMessage, formattedMessage, isInThreadTimeline)
+        parseWithDiscoveredResult?.invoke(textMessage, formattedMessage, isInThreadTimeline, discoveredCommandNames)
+            ?: parseResult(textMessage, formattedMessage, isInThreadTimeline)
     }
 
     override suspend fun proceedSendMessage(

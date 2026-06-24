@@ -23,6 +23,7 @@ import io.element.android.libraries.matrix.api.room.JoinedRoom
 import io.element.android.libraries.matrix.api.room.RoomInfo
 import io.element.android.libraries.matrix.api.room.RoomMembersState
 import io.element.android.libraries.matrix.api.room.RoomNotificationSettingsState
+import io.element.android.libraries.matrix.api.room.RoomStateEvent
 import io.element.android.libraries.matrix.api.room.SendQueueUpdate
 import io.element.android.libraries.matrix.api.room.history.RoomHistoryVisibility
 import io.element.android.libraries.matrix.api.room.join.JoinRule
@@ -102,6 +103,10 @@ class FakeJoinedRoom(
 
     fun givenRoomInfo(roomInfo: RoomInfo) {
         baseRoom.givenRoomInfo(roomInfo)
+    }
+
+    fun givenCurrentStateEvents(result: (String) -> Result<List<RoomStateEvent>>) {
+        baseRoom.givenCurrentStateEvents(result)
     }
 
     override suspend fun createTimeline(createTimelineParams: CreateTimelineParams): Result<Timeline> = simulateLongTask {
