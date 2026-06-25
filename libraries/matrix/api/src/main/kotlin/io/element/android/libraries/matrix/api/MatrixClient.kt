@@ -42,6 +42,7 @@ import io.element.android.libraries.matrix.api.spaces.SpaceService
 import io.element.android.libraries.matrix.api.sync.SlidingSyncVersion
 import io.element.android.libraries.matrix.api.sync.SyncService
 import io.element.android.libraries.matrix.api.timeline.Timeline
+import io.element.android.libraries.matrix.api.to_device.CustomToDeviceEvent
 import io.element.android.libraries.matrix.api.user.MatrixSearchUserResults
 import io.element.android.libraries.matrix.api.user.MatrixUser
 import io.element.android.libraries.matrix.api.verification.SessionVerificationService
@@ -118,6 +119,16 @@ interface MatrixClient {
     fun getRoomInfoFlow(roomId: RoomId): Flow<Optional<RoomInfo>>
 
     fun isMe(userId: UserId?) = userId == sessionId
+
+    suspend fun sendCustomToDevice(
+        eventType: String,
+        userId: UserId,
+        deviceIds: List<DeviceId>,
+        content: String,
+        txnId: String?,
+    ): Result<Unit>
+
+    fun customToDeviceEvents(eventType: String): Flow<CustomToDeviceEvent>
 
     suspend fun trackRecentlyVisitedRoom(roomId: RoomId): Result<Unit>
     suspend fun getRecentlyVisitedRooms(): Result<List<RoomId>>

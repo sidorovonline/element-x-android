@@ -48,6 +48,7 @@ import io.element.android.libraries.matrix.api.roomlist.RoomListService
 import io.element.android.libraries.matrix.api.spaces.SpaceService
 import io.element.android.libraries.matrix.api.sync.SlidingSyncVersion
 import io.element.android.libraries.matrix.api.sync.SyncState
+import io.element.android.libraries.matrix.api.to_device.CustomToDeviceEvent
 import io.element.android.libraries.matrix.api.user.MatrixSearchUserResults
 import io.element.android.libraries.matrix.api.user.MatrixUser
 import io.element.android.libraries.matrix.impl.encryption.RustEncryptionService
@@ -118,6 +119,7 @@ import org.matrix.rustcomponents.sdk.BeaconInfoListener
 import org.matrix.rustcomponents.sdk.BeaconInfoUpdate
 import org.matrix.rustcomponents.sdk.Client
 import org.matrix.rustcomponents.sdk.ClientException
+import org.matrix.rustcomponents.sdk.CustomToDeviceEventListener
 import org.matrix.rustcomponents.sdk.IgnoredUsersListener
 import org.matrix.rustcomponents.sdk.Membership
 import org.matrix.rustcomponents.sdk.NotificationProcessSetup
@@ -133,6 +135,7 @@ import kotlin.jvm.optionals.getOrNull
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import org.matrix.rustcomponents.sdk.CreateRoomParameters as RustCreateRoomParameters
+import org.matrix.rustcomponents.sdk.CustomToDeviceEvent as RustCustomToDeviceEvent
 import org.matrix.rustcomponents.sdk.RoomPreset as RustRoomPreset
 import org.matrix.rustcomponents.sdk.SyncService as ClientSyncService
 
@@ -316,6 +319,44 @@ class RustMatrixClient(
             }
             .getOrNull()
             ?: sessionId.value.substringAfter(":")
+    }
+
+    override suspend fun sendCustomToDevice(
+        eventType: String,
+        userId: UserId,
+        deviceIds: List<DeviceId>,
+        content: String,
+        txnId: String?,
+    ): Result<Unit> = withContext(sessionDispatcher) {
+        runCatchingExceptions {
+            innerClient.sendCustomToDevice(
+                eventType = eventType,
+                userId = userId.value,
+                deviceIds = deviceIds.map { it.value },
+                content = content,
+                txnId = txnId,
+            )
+        }
+    }
+
+    override fun customToDeviceEvents(eventType: String): Flow<CustomToDeviceEvent> {
+        return mxCallbackFlow {
+            innerClient.subscribeToCustomToDeviceEvents(
+                eventType = eventType,
+                listener = object : CustomToDeviceEventListener {
+                    override fun onEvent(event: RustCustomToDeviceEvent) {
+                        trySend(
+                            CustomToDeviceEvent(
+                                eventType = event.eventType,
+                                sender = UserId(event.sender),
+                                content = event.content,
+                                encrypted = event.encrypted,
+                            )
+                        )
+                    }
+                }
+            )
+        }.buffer(Channel.UNLIMITED)
     }
 
     override suspend fun getUrl(url: String): Result<ByteArray> = withContext(sessionDispatcher) {

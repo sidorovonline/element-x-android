@@ -37,6 +37,7 @@ import io.element.android.features.messages.impl.attachments.Attachment
 import io.element.android.features.messages.impl.attachments.Attachment.Media
 import io.element.android.features.messages.impl.attachments.preview.error.sendAttachmentError
 import io.element.android.features.messages.impl.draft.ComposerDraftService
+import io.element.android.features.messages.impl.messagecomposer.suggestions.MyClawCommandSuggestionsDataSource
 import io.element.android.features.messages.impl.messagecomposer.suggestions.RoomAliasSuggestionsDataSource
 import io.element.android.features.messages.impl.messagecomposer.suggestions.SuggestionsProcessor
 import io.element.android.features.messages.impl.timeline.TimelineController
@@ -82,6 +83,7 @@ import io.element.android.libraries.textcomposer.model.Message
 import io.element.android.libraries.textcomposer.model.MessageComposerMode
 import io.element.android.libraries.textcomposer.model.Suggestion
 import io.element.android.libraries.textcomposer.model.TextEditorState
+import io.element.android.libraries.textcomposer.model.SuggestionType
 import io.element.android.libraries.textcomposer.model.rememberMarkdownTextEditorState
 import io.element.android.services.analytics.api.AnalyticsService
 import io.element.android.services.analyticsproviders.api.trackers.captureInteraction
@@ -126,6 +128,7 @@ class MessageComposerPresenter(
     private val messageComposerContext: DefaultMessageComposerContext,
     private val richTextEditorStateFactory: RichTextEditorStateFactory,
     private val roomAliasSuggestionsDataSource: RoomAliasSuggestionsDataSource,
+    private val myClawCommandSuggestionsDataSource: MyClawCommandSuggestionsDataSource,
     private val permalinkParser: PermalinkParser,
     private val permalinkBuilder: PermalinkBuilder,
     permissionsPresenterFactory: PermissionsPresenter.Factory,
@@ -219,6 +222,9 @@ class MessageComposerPresenter(
         val discoveredCommandSuggestions by discoveredCommandSuggestionsFlow.collectAsState()
         ResolveSuggestionsEffect(
             suggestions = suggestions,
+            discoveredCommandSuggestionsFlow = discoveredCommandSuggestionsFlow,
+        )
+        ResolveDiscoveredCommandSuggestionsEffect(
             discoveredCommandSuggestionsFlow = discoveredCommandSuggestionsFlow,
         )
 
@@ -422,6 +428,27 @@ class MessageComposerPresenter(
             slashCommandAction = slashCommandAction.value,
             eventSink = ::handleEvent,
         )
+    }
+
+    @OptIn(FlowPreview::class)
+    @Composable
+    private fun ResolveDiscoveredCommandSuggestionsEffect(
+        discoveredCommandSuggestionsFlow: MutableStateFlow<List<SlashCommandSuggestion>>,
+    ) {
+        LaunchedEffect(Unit) {
+            suggestionSearchTrigger
+                .debounce(0.2.seconds)
+                .collect { suggestion ->
+                    if (suggestion?.type == SuggestionType.Command && suggestion.start == 0) {
+                        discoveredCommandSuggestionsFlow.value = myClawCommandSuggestionsDataSource.getSuggestions(
+                            room = room,
+                            query = suggestion.text,
+                        )
+                    } else {
+                        discoveredCommandSuggestionsFlow.value = emptyList()
+                    }
+                }
+        }
     }
 
     @OptIn(FlowPreview::class)

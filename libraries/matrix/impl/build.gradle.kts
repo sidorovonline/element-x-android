@@ -21,12 +21,15 @@ android {
 setupDependencyInjection()
 
 dependencies {
-    releaseImplementation(libs.matrix.sdk)
-    if (file("${rootDir.path}/libraries/rustsdk/matrix-rust-sdk.aar").exists()) {
-        println("\nNote: Using local binary of the Rust SDK.\n")
-        debugImplementation(projects.libraries.rustsdk)
+    val localRustSdkAar = file("${rootDir.path}/libraries/rustsdk/matrix-rust-sdk.aar")
+    if (localRustSdkAar.exists()) {
+        println("\nNote: Using local binary of the Rust SDK for all variants.\n")
+        implementation(projects.libraries.rustsdk)
     } else {
-        debugImplementation(libs.matrix.sdk)
+        throw GradleException(
+            "Missing local Rust SDK AAR at ${localRustSdkAar.path}. " +
+                "Build it with /home/victor/dev/myclaw-matrix-build-env/build-sdk-aar.sh before compiling this fork."
+        )
     }
     implementation(projects.libraries.rustlsTls)
 

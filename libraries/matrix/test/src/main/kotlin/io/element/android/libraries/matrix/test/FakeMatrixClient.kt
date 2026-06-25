@@ -41,6 +41,7 @@ import io.element.android.libraries.matrix.api.roomlist.RoomListService
 import io.element.android.libraries.matrix.api.spaces.SpaceService
 import io.element.android.libraries.matrix.api.sync.SlidingSyncVersion
 import io.element.android.libraries.matrix.api.sync.SyncService
+import io.element.android.libraries.matrix.api.to_device.CustomToDeviceEvent
 import io.element.android.libraries.matrix.api.user.MatrixSearchUserResults
 import io.element.android.libraries.matrix.api.user.MatrixUser
 import io.element.android.libraries.matrix.api.verification.SessionVerificationService
@@ -62,6 +63,7 @@ import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.emptyFlow
@@ -122,6 +124,14 @@ class FakeMatrixClient(
     private val getDatabaseSizesLambda: () -> Result<SdkStoreSizes> = { lambdaError() },
     private val resetWellKnownConfigLambda: () -> Result<Unit> = { lambdaError() },
 ) : MatrixClient {
+    data class SentCustomToDevice(
+        val eventType: String,
+        val userId: UserId,
+        val deviceIds: List<DeviceId>,
+        val content: String,
+        val txnId: String?,
+    )
+
     var setDisplayNameCalled: Boolean = false
         private set
     var uploadAvatarCalled: Boolean = false
@@ -142,6 +152,9 @@ class FakeMatrixClient(
     private var setDisplayNameResult: Result<Unit> = Result.success(Unit)
     private var uploadAvatarResult: Result<Unit> = Result.success(Unit)
     private var removeAvatarResult: Result<Unit> = Result.success(Unit)
+    private val customToDeviceEvents = MutableSharedFlow<CustomToDeviceEvent>(extraBufferCapacity = 20)
+    val sentCustomToDeviceEvents = mutableListOf<SentCustomToDevice>()
+    var sendCustomToDeviceResult: Result<Unit> = Result.success(Unit)
     var joinRoomLambda: (RoomId) -> Result<RoomInfo?> = {
         Result.success(null)
     }
@@ -339,6 +352,31 @@ class FakeMatrixClient(
 
     override fun userIdServerName(): String {
         return userIdServerNameLambda()
+    }
+
+    override suspend fun sendCustomToDevice(
+        eventType: String,
+        userId: UserId,
+        deviceIds: List<DeviceId>,
+        content: String,
+        txnId: String?,
+    ): Result<Unit> {
+        sentCustomToDeviceEvents += SentCustomToDevice(
+            eventType = eventType,
+            userId = userId,
+            deviceIds = deviceIds,
+            content = content,
+            txnId = txnId,
+        )
+        return sendCustomToDeviceResult
+    }
+
+    override fun customToDeviceEvents(eventType: String): Flow<CustomToDeviceEvent> {
+        return customToDeviceEvents
+    }
+
+    suspend fun emitCustomToDeviceEvent(event: CustomToDeviceEvent) {
+        customToDeviceEvents.emit(event)
     }
 
     override suspend fun getUrl(url: String): Result<ByteArray> {

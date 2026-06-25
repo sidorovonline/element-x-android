@@ -36,7 +36,7 @@ class SuggestionsProcessor(
      *  @param currentUserId The current user id
      *  @param canSendRoomMention Should return true if the current user can send room mentions
      *  @param isInThread Whether the composer is in a thread or not, used to filter slash commands suggestions
-     *  @param discoveredCommandSuggestions Slash command metadata discovered from room state events
+     *  @param discoveredCommandSuggestions Slash command metadata discovered outside the room timeline
      *  @return The list of suggestions to display
      */
     suspend fun process(
