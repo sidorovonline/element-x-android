@@ -444,7 +444,8 @@ class MessageComposerPresenter(
                             room = room,
                             query = suggestion.text,
                         )
-                    } else {
+                    } else if (suggestion != null) {
+                        // Non-command suggestions invalidate remote slash metadata. Null is emitted after insertion, so keep it for send.
                         discoveredCommandSuggestionsFlow.value = emptyList()
                     }
                 }

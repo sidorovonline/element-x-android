@@ -30,14 +30,22 @@ import io.element.android.libraries.matrix.api.core.UserId
 import io.element.android.libraries.matrix.api.permalink.PermalinkBuilder
 import io.element.android.libraries.matrix.api.permalink.PermalinkParser
 import io.element.android.libraries.matrix.api.room.JoinedRoom
+import io.element.android.libraries.matrix.api.to_device.CustomToDeviceEvent
 import io.element.android.libraries.matrix.api.timeline.Timeline
+import io.element.android.libraries.matrix.test.A_DEVICE_ID
 import io.element.android.libraries.matrix.test.A_FAILURE_REASON
 import io.element.android.libraries.matrix.test.A_MESSAGE
+import io.element.android.libraries.matrix.test.A_ROOM_ID
+import io.element.android.libraries.matrix.test.A_SESSION_ID
 import io.element.android.libraries.matrix.test.A_USER_ID
+import io.element.android.libraries.matrix.test.A_USER_ID_2
 import io.element.android.libraries.matrix.test.FakeMatrixClient
 import io.element.android.libraries.matrix.test.permalink.FakePermalinkBuilder
 import io.element.android.libraries.matrix.test.permalink.FakePermalinkParser
+import io.element.android.libraries.matrix.test.room.FakeBaseRoom
 import io.element.android.libraries.matrix.test.room.FakeJoinedRoom
+import io.element.android.libraries.matrix.test.room.aRoomMember
+import io.element.android.libraries.matrix.test.timeline.FakeTimeline
 import io.element.android.libraries.mediapickers.api.PickerProvider
 import io.element.android.libraries.mediapickers.test.FakePickerProvider
 import io.element.android.libraries.mediaupload.api.MediaOptimizationConfig
@@ -56,10 +64,14 @@ import io.element.android.libraries.preferences.test.InMemorySessionPreferencesS
 import io.element.android.libraries.push.test.notifications.conversations.FakeNotificationConversationService
 import io.element.android.libraries.slashcommands.api.SlashCommand
 import io.element.android.libraries.slashcommands.api.SlashCommandService
+import io.element.android.libraries.slashcommands.api.SlashCommandSuggestion
 import io.element.android.libraries.slashcommands.test.FakeSlashCommandService
 import io.element.android.libraries.textcomposer.mentions.MentionSpanProvider
 import io.element.android.libraries.textcomposer.mentions.MentionSpanTheme
+import io.element.android.libraries.textcomposer.mentions.ResolvedSuggestion
 import io.element.android.libraries.textcomposer.model.MessageComposerMode
+import io.element.android.libraries.textcomposer.model.Suggestion
+import io.element.android.libraries.textcomposer.model.SuggestionType
 import io.element.android.services.analytics.test.FakeAnalyticsService
 import io.element.android.tests.testutils.WarmUpRule
 import io.element.android.tests.testutils.lambda.lambdaRecorder
@@ -68,8 +80,14 @@ import io.element.android.tests.testutils.test
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Rule
 import org.junit.Test
 
@@ -251,6 +269,85 @@ class MessageComposerPresenterSlashCommandTest {
         }
     }
 
+    @Test
+    fun `present - selected discovered slash command is sent as a normal message`() = runTest {
+        val matrixClient = FakeMatrixClient(
+            sessionId = A_SESSION_ID,
+            deviceId = A_DEVICE_ID,
+        )
+        val parsedDiscoveredCommandNames = mutableListOf<Set<String>>()
+        val sentMessages = mutableListOf<String>()
+        val timeline = FakeTimeline().apply {
+            sendMessageLambda = { body, _, _, _, _ ->
+                sentMessages += body
+                Result.success(Unit)
+            }
+        }
+        val slashCommandService = FakeSlashCommandService(
+            getSuggestionsWithDiscoveredResult = { _, _, discoveredCommands ->
+                discoveredCommands
+            },
+            parseWithDiscoveredResult = { _, _, _, discoveredCommandNames ->
+                parsedDiscoveredCommandNames += discoveredCommandNames
+                SlashCommand.NotACommand
+            },
+        )
+        val presenter = createPresenter(
+            room = aDmRoom(timeline),
+            slashCommandService = slashCommandService,
+            myClawCommandSuggestionsDataSource = MyClawCommandSuggestionsDataSource(matrixClient),
+        )
+
+        presenter.test {
+            val initialState = awaitFirstItem()
+            initialState.textEditorState.setHtml("/sta")
+            initialState.eventSink(MessageComposerEvent.SuggestionReceived(Suggestion(0, 4, SuggestionType.Command, "sta")))
+            advanceTimeBy(201)
+            runCurrent()
+
+            val sent = matrixClient.sentCustomToDeviceEvents.single()
+            val sentContent = Json.parseToJsonElement(sent.content).jsonObject
+            val txnId = sentContent["txn_id"]!!.jsonPrimitive.contentOrNull!!
+            matrixClient.emitCustomToDeviceEvent(
+                CustomToDeviceEvent(
+                    eventType = MyClawCommandSuggestionsDataSource.RESPONSE_TYPE,
+                    sender = A_USER_ID_2,
+                    content = """
+                        {
+                          "version": 1,
+                          "txn_id": "$txnId",
+                          "room_id": "${A_ROOM_ID.value}",
+                          "query": "sta",
+                          "commands": [
+                            { "name": "status", "description": "Show MyClaw state", "argument_hint": null }
+                          ]
+                        }
+                    """.trimIndent(),
+                    encrypted = false,
+                )
+            )
+            runCurrent()
+
+            var suggestionsState = awaitItem()
+            while (suggestionsState.suggestions.isEmpty()) {
+                suggestionsState = awaitItem()
+            }
+            assertThat(suggestionsState.suggestions)
+                .containsExactly(ResolvedSuggestion.Command(SlashCommandSuggestion("/status", null, "Show MyClaw state")))
+
+            suggestionsState.eventSink(MessageComposerEvent.InsertSuggestion(suggestionsState.suggestions.single()))
+            runCurrent()
+            assertThat(suggestionsState.textEditorState.messageHtml()).isEqualTo("/status")
+
+            suggestionsState.eventSink(MessageComposerEvent.SendMessage)
+            advanceUntilIdle()
+
+            assertThat(parsedDiscoveredCommandNames).containsExactly(setOf("status"))
+            assertThat(sentMessages).containsExactly("/status")
+            assertThat(suggestionsState.slashCommandAction.isFailure()).isFalse()
+        }
+    }
+
     private fun TestScope.createPresenter(
         room: JoinedRoom = FakeJoinedRoom(
             typingNoticeResult = { Result.success(Unit) }
@@ -276,6 +373,7 @@ class MessageComposerPresenterSlashCommandTest {
         mediaOptimizationConfigProvider: FakeMediaOptimizationConfigProvider = FakeMediaOptimizationConfigProvider(),
         threadRoot: ThreadId? = null,
         slashCommandService: SlashCommandService = FakeSlashCommandService(),
+        myClawCommandSuggestionsDataSource: MyClawCommandSuggestionsDataSource = MyClawCommandSuggestionsDataSource(FakeMatrixClient()),
     ) = MessageComposerPresenter(
         navigator = navigator,
         sessionCoroutineScope = this,
@@ -303,7 +401,7 @@ class MessageComposerPresenterSlashCommandTest {
         messageComposerContext = DefaultMessageComposerContext(),
         richTextEditorStateFactory = TestRichTextEditorStateFactory(),
         roomAliasSuggestionsDataSource = FakeRoomAliasSuggestionsDataSource(),
-        myClawCommandSuggestionsDataSource = MyClawCommandSuggestionsDataSource(FakeMatrixClient()),
+        myClawCommandSuggestionsDataSource = myClawCommandSuggestionsDataSource,
         permissionsPresenterFactory = FakePermissionsPresenterFactory(permissionPresenter),
         permalinkParser = permalinkParser,
         permalinkBuilder = permalinkBuilder,
@@ -323,5 +421,19 @@ class MessageComposerPresenterSlashCommandTest {
     private suspend fun <T> ReceiveTurbine<T>.awaitFirstItem(): T {
         skipItems(1)
         return awaitItem()
+    }
+
+    private fun aDmRoom(timeline: Timeline = FakeTimeline()): FakeJoinedRoom {
+        return FakeJoinedRoom(
+            baseRoom = FakeBaseRoom(
+                sessionId = A_SESSION_ID,
+                roomId = A_ROOM_ID,
+                getDirectRoomMemberResult = {
+                    aRoomMember(userId = A_USER_ID_2)
+                },
+            ),
+            liveTimeline = timeline,
+            typingNoticeResult = { Result.success(Unit) },
+        )
     }
 }
