@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+wrap_binary() {
+    local path="$1"
+    local base
+    base="$(basename "$path")"
+    if [[ ! -f "$path" || -L "$path" ]]; then
+        return 0
+    fi
+    if [[ "$path" == *.real ]]; then
+        return 0
+    fi
+    case "$path" in
+        /opt/android-sdk/ndk/*/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-17)
+            return 0
+            ;;
+    esac
+    if ! file "$path" | grep -q 'x86-64'; then
+        return 0
+    fi
+
+    mv "$path" "$path.real"
+    cat > "$path" <<'EOF'
+#!/usr/bin/env bash
+invoked_path="$0"
+real_path="$invoked_path"
+if [[ -L "$real_path" ]]; then
+    real_path="$(readlink -f "$real_path")"
+fi
+argv0="$invoked_path"
+if [[ "$(basename "$invoked_path")" == "lld" ]]; then
+    argv0="$(dirname "$invoked_path")/ld.lld"
+fi
+exec /usr/bin/qemu-x86_64-static -0 "$argv0" "$real_path.real" "$@"
+EOF
+    chmod +x "$path"
+}
+
+wrap_clang_entrypoint() {
+    local path="$1"
+    if [[ ! -e "$path" ]]; then
+        return 0
+    fi
+
+    rm -f "$path"
+    cat > "$path" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+bin_dir="$(cd "$(dirname "$0")" && pwd)"
+base="$(basename "$0")"
+args=()
+
+case "$base" in
+    *clang++)
+        args+=(--driver-mode=g++)
+        ;;
+esac
+
+case "$base" in
+    *-clang|*-clang++)
+        target="${base%-clang}"
+        target="${target%-clang++}"
+        args+=(--target="$target")
+        ;;
+esac
+
+exec /usr/bin/qemu-x86_64-static "$bin_dir/clang-17" "${args[@]}" "$@"
+EOF
+    chmod +x "$path"
+}
+
+find /opt/android-sdk/build-tools -type f -perm /111 -print0 | while IFS= read -r -d '' path; do
+    wrap_binary "$path"
+done
+
+find /opt/android-sdk/cmake -type f -perm /111 -print0 | while IFS= read -r -d '' path; do
+    wrap_binary "$path"
+done
+
+find /opt/android-sdk/ndk -type f -perm /111 -print0 | while IFS= read -r -d '' path; do
+    wrap_binary "$path"
+done
+
+find /opt/android-sdk/ndk -path '*/toolchains/llvm/prebuilt/linux-x86_64/bin/*clang*' -print0 | while IFS= read -r -d '' path; do
+    case "$(basename "$path")" in
+        clang|clang++|*-clang|*-clang++)
+            wrap_clang_entrypoint "$path"
+            ;;
+    esac
+done
