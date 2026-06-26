@@ -9,7 +9,9 @@ package io.element.android.features.messages.impl.messagecomposer.suggestions
 
 import dev.zacsweers.metro.Inject
 import io.element.android.libraries.matrix.api.MatrixClient
+import io.element.android.libraries.matrix.api.core.UserId
 import io.element.android.libraries.matrix.api.room.JoinedRoom
+import io.element.android.libraries.matrix.api.room.joinedRoomMembers
 import io.element.android.libraries.slashcommands.api.SlashCommandSuggestion
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -42,9 +44,8 @@ class MyClawCommandSuggestionsDataSource(
         limit: Int = DEFAULT_LIMIT,
         timeout: Duration = DEFAULT_TIMEOUT,
     ): List<SlashCommandSuggestion> {
-        val candidateUserId = room.getDirectRoomMember()
-            ?.userId
-            ?.takeUnless { matrixClient.isMe(it) }
+        val candidateUserIds = room.commandDiscoveryCandidateUserIds()
+            .takeIf { it.isNotEmpty() }
             ?: return emptyList()
         val boundedQuery = query.removePrefix("/").take(MAX_QUERY_LENGTH)
         val boundedLimit = limit.coerceIn(1, MAX_LIMIT)
@@ -54,7 +55,7 @@ class MyClawCommandSuggestionsDataSource(
         return coroutineScope {
             val response = async {
                 matrixClient.customToDeviceEvents(RESPONSE_TYPE)
-                    .filter { event -> event.eventType == RESPONSE_TYPE && event.sender == candidateUserId }
+                    .filter { event -> event.eventType == RESPONSE_TYPE && event.sender in candidateUserIds }
                     .first { event -> event.content.isMatchingResponse(txnId = txnId, roomId = roomId, query = boundedQuery) }
             }
 
@@ -65,14 +66,17 @@ class MyClawCommandSuggestionsDataSource(
                 limit = boundedLimit,
                 deviceId = matrixClient.deviceId.value,
             )
-            val sendResult = matrixClient.sendCustomToDevice(
-                eventType = REQUEST_TYPE,
-                userId = candidateUserId,
-                deviceIds = emptyList(),
-                content = request,
-                txnId = txnId,
-            )
-            if (sendResult.isFailure) {
+            val sendResults = candidateUserIds.map { candidateUserId ->
+                matrixClient.sendCustomToDevice(
+                    eventType = REQUEST_TYPE,
+                    userId = candidateUserId,
+                    deviceIds = emptyList(),
+                    content = request,
+                    txnId = txnId,
+                )
+            }
+            val sentAnyRequest = sendResults.any { it.isSuccess }
+            if (!sentAnyRequest) {
                 response.cancel()
                 Timber.w("Failed to send MyClaw command discovery request")
                 return@coroutineScope emptyList()
@@ -84,6 +88,37 @@ class MyClawCommandSuggestionsDataSource(
             response.cancel()
             suggestions
         }
+    }
+
+    private suspend fun JoinedRoom.commandDiscoveryCandidateUserIds(): List<UserId> {
+        roomDirectCandidateUserId()?.let {
+            return listOf(it)
+        }
+        if (info().isDm) {
+            return emptyList()
+        }
+
+        val joinedMembers = membersStateFlow.value.joinedRoomMembers()
+        if (joinedMembers.isEmpty()) {
+            runCatching { updateMembers() }
+        }
+        val candidateMembers = membersStateFlow.value
+            .joinedRoomMembers()
+            .filterNot { matrixClient.isMe(it.userId) }
+            .filterNot { it.isServiceMember }
+
+        return if (candidateMembers.size <= MAX_ROOM_CANDIDATES) {
+            candidateMembers.map { it.userId }
+        } else {
+            emptyList()
+        }
+    }
+
+    private suspend fun JoinedRoom.roomDirectCandidateUserId(): UserId? {
+        return getDirectRoomMember()
+            ?.takeUnless { it.isServiceMember }
+            ?.userId
+            ?.takeUnless { matrixClient.isMe(it) }
     }
 
     internal fun buildRequestContent(
@@ -181,6 +216,7 @@ class MyClawCommandSuggestionsDataSource(
         private const val MAX_COMMAND_LENGTH = 80
         private const val MAX_DESCRIPTION_LENGTH = 240
         private const val MAX_ARGUMENT_HINT_LENGTH = 160
+        private const val MAX_ROOM_CANDIDATES = 10
         private val DEFAULT_TIMEOUT = 1500.milliseconds
     }
 }

@@ -8,6 +8,8 @@
 package io.element.android.features.messages.impl.messagecomposer.suggestions
 
 import com.google.common.truth.Truth.assertThat
+import io.element.android.libraries.matrix.api.core.UserId
+import io.element.android.libraries.matrix.api.room.RoomMembersState
 import io.element.android.libraries.matrix.api.to_device.CustomToDeviceEvent
 import io.element.android.libraries.matrix.test.A_DEVICE_ID
 import io.element.android.libraries.matrix.test.A_ROOM_ID
@@ -19,6 +21,7 @@ import io.element.android.libraries.matrix.test.room.FakeJoinedRoom
 import io.element.android.libraries.matrix.test.room.aRoomMember
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -141,6 +144,66 @@ class MyClawCommandSuggestionsDataSourceTest {
     }
 
     @Test
+    fun `getSuggestions probes small non-DM room members and returns first matching response`() = runTest {
+        val botUserId = UserId("@room-bot:server.org")
+        val humanUserId = UserId("@human:server.org")
+        val room = aRoomWithMembers(listOf(botUserId, humanUserId))
+
+        val result = async {
+            sut.getSuggestions(room = room, query = "sta", timeout = 2.seconds)
+        }
+        runCurrent()
+
+        val sentEvents = matrixClient.sentCustomToDeviceEvents
+        assertThat(sentEvents.map { it.userId }).containsExactly(botUserId, humanUserId)
+        assertThat(sentEvents.map { it.userId }).doesNotContain(A_SESSION_ID)
+        assertThat(sentEvents.all { it.eventType == MyClawCommandSuggestionsDataSource.REQUEST_TYPE }).isTrue()
+
+        val sentContent = Json.parseToJsonElement(sentEvents.first { it.userId == botUserId }.content).jsonObject
+        val txnId = sentContent["txn_id"]!!.jsonPrimitive.contentOrNull!!
+        matrixClient.emitCustomToDeviceEvent(
+            responseEvent(
+                sender = botUserId,
+                txnId = txnId,
+                query = "sta",
+            )
+        )
+        runCurrent()
+
+        assertThat(result.await().map { it.command }).containsExactly("/status")
+    }
+
+    @Test
+    fun `getSuggestions times out quietly in non-DM room when no candidate responds`() = runTest {
+        val botUserId = UserId("@room-bot:server.org")
+        val room = aRoomWithMembers(listOf(botUserId))
+
+        val result = async {
+            sut.getSuggestions(room = room, query = "", timeout = 100.milliseconds)
+        }
+        runCurrent()
+        advanceTimeBy(101)
+        runCurrent()
+
+        assertThat(result.await()).isEmpty()
+        assertThat(matrixClient.sentCustomToDeviceEvents.map { it.userId }).containsExactly(botUserId)
+    }
+
+    @Test
+    fun `getSuggestions skips large non-DM rooms instead of broadcasting`() = runTest {
+        val room = aRoomWithMembers(List(11) { index -> UserId("@member$index:server.org") })
+
+        val suggestions = sut.getSuggestions(
+            room = room,
+            query = "",
+            timeout = 100.milliseconds,
+        )
+
+        assertThat(suggestions).isEmpty()
+        assertThat(matrixClient.sentCustomToDeviceEvents).isEmpty()
+    }
+
+    @Test
     fun `getSuggestions times out quietly`() = runTest {
         val result = async {
             sut.getSuggestions(room = aDmRoom(), query = "", timeout = 100.milliseconds)
@@ -162,6 +225,44 @@ class MyClawCommandSuggestionsDataSourceTest {
                     aRoomMember(userId = A_USER_ID_2)
                 },
             )
+        )
+    }
+
+    private fun aRoomWithMembers(candidateUserIds: List<UserId>): FakeJoinedRoom {
+        return FakeJoinedRoom(
+            baseRoom = FakeBaseRoom(
+                sessionId = A_SESSION_ID,
+                roomId = A_ROOM_ID,
+            ).apply {
+                givenRoomMembersState(
+                    RoomMembersState.Ready(
+                        persistentListOf(
+                            aRoomMember(userId = A_SESSION_ID),
+                            *candidateUserIds.map { aRoomMember(userId = it) }.toTypedArray(),
+                            aRoomMember(userId = UserId("@service:server.org"), isServiceMember = true),
+                        )
+                    )
+                )
+            }
+        )
+    }
+
+    private fun responseEvent(sender: UserId, txnId: String, query: String): CustomToDeviceEvent {
+        return CustomToDeviceEvent(
+            eventType = MyClawCommandSuggestionsDataSource.RESPONSE_TYPE,
+            sender = sender,
+            content = """
+                {
+                  "version": 1,
+                  "txn_id": "$txnId",
+                  "room_id": "${A_ROOM_ID.value}",
+                  "query": "$query",
+                  "commands": [
+                    { "name": "status", "description": "Show MyClaw state", "argument_hint": null }
+                  ]
+                }
+            """.trimIndent(),
+            encrypted = false,
         )
     }
 }
