@@ -174,6 +174,31 @@ class MyClawCommandSuggestionsDataSourceTest {
     }
 
     @Test
+    fun `getSuggestions waits for slow non-DM room response`() = runTest {
+        val botUserId = UserId("@room-bot:server.org")
+        val room = aRoomWithMembers(listOf(botUserId))
+
+        val result = async {
+            sut.getSuggestions(room = room, query = "sta")
+        }
+        runCurrent()
+
+        val sentContent = Json.parseToJsonElement(matrixClient.sentCustomToDeviceEvents.single().content).jsonObject
+        val txnId = sentContent["txn_id"]!!.jsonPrimitive.contentOrNull!!
+        advanceTimeBy(10_000)
+        matrixClient.emitCustomToDeviceEvent(
+            responseEvent(
+                sender = botUserId,
+                txnId = txnId,
+                query = "sta",
+            )
+        )
+        runCurrent()
+
+        assertThat(result.await().map { it.command }).containsExactly("/status")
+    }
+
+    @Test
     fun `getSuggestions times out quietly in non-DM room when no candidate responds`() = runTest {
         val botUserId = UserId("@room-bot:server.org")
         val room = aRoomWithMembers(listOf(botUserId))

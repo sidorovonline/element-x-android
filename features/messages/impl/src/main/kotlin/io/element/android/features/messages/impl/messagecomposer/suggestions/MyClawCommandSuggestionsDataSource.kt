@@ -32,7 +32,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import timber.log.Timber
 import java.util.UUID
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 @Inject
 class MyClawCommandSuggestionsDataSource(
@@ -217,6 +217,6 @@ class MyClawCommandSuggestionsDataSource(
         private const val MAX_DESCRIPTION_LENGTH = 240
         private const val MAX_ARGUMENT_HINT_LENGTH = 160
         private const val MAX_ROOM_CANDIDATES = 10
-        private val DEFAULT_TIMEOUT = 1500.milliseconds
+        private val DEFAULT_TIMEOUT = 15.seconds
     }
 }

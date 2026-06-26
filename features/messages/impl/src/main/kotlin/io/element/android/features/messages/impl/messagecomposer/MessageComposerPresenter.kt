@@ -99,6 +99,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
@@ -438,7 +439,7 @@ class MessageComposerPresenter(
         LaunchedEffect(Unit) {
             suggestionSearchTrigger
                 .debounce(0.2.seconds)
-                .collect { suggestion ->
+                .collectLatest { suggestion ->
                     if (suggestion?.type == SuggestionType.Command && suggestion.start == 0) {
                         discoveredCommandSuggestionsFlow.value = myClawCommandSuggestionsDataSource.getSuggestions(
                             room = room,
