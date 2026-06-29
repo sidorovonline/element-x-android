@@ -26,6 +26,7 @@ import io.element.android.libraries.designsystem.components.avatar.AvatarData
 import io.element.android.libraries.designsystem.utils.snackbar.SnackbarMessage
 import io.element.android.libraries.matrix.api.core.RoomId
 import io.element.android.libraries.matrix.api.encryption.identity.IdentityState
+import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatus
 import io.element.android.libraries.matrix.api.room.tombstone.SuccessorRoom
 import io.element.android.libraries.matrix.api.user.UserPresence
 import kotlinx.collections.immutable.ImmutableList
@@ -55,6 +56,7 @@ data class MessagesState(
     val pinnedMessagesBannerState: PinnedMessagesBannerState,
     val dmUserVerificationState: IdentityState?,
     val dmUserPresence: UserPresence?,
+    val myClawSessionStatus: MyClawSessionStatus?,
     val roomMemberModerationState: RoomMemberModerationState,
     /** Type of "shared history" icon to show in the top bar. */
     val topBarSharedHistoryIcon: SharedHistoryIcon,

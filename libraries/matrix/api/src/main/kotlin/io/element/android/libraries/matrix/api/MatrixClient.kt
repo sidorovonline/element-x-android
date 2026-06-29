@@ -24,6 +24,7 @@ import io.element.android.libraries.matrix.api.linknewdevice.LinkDesktopHandler
 import io.element.android.libraries.matrix.api.linknewdevice.LinkMobileHandler
 import io.element.android.libraries.matrix.api.media.MatrixMediaLoader
 import io.element.android.libraries.matrix.api.media.MediaPreviewService
+import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatusService
 import io.element.android.libraries.matrix.api.notification.NotificationService
 import io.element.android.libraries.matrix.api.notificationsettings.NotificationSettingsService
 import io.element.android.libraries.matrix.api.oauth.AccountManagementAction
@@ -68,6 +69,7 @@ interface MatrixClient {
     val roomDirectoryService: RoomDirectoryService
     val mediaPreviewService: MediaPreviewService
     val matrixMediaLoader: MatrixMediaLoader
+    val myClawSessionStatusService: MyClawSessionStatusService
     val sessionCoroutineScope: CoroutineScope
     val ignoredUsersFlow: StateFlow<ImmutableList<UserId>>
     val roomMembershipObserver: RoomMembershipObserver

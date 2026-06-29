@@ -18,6 +18,8 @@ import io.element.android.libraries.designsystem.preview.USER_NAME_BOB
 import io.element.android.libraries.matrix.api.core.RoomAlias
 import io.element.android.libraries.matrix.api.core.RoomId
 import io.element.android.libraries.matrix.api.core.UserId
+import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatus
+import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatusState
 import io.element.android.libraries.matrix.api.notification.CallIntent
 import io.element.android.libraries.matrix.api.room.RoomNotificationMode
 import io.element.android.libraries.matrix.api.user.UserPresence
@@ -184,6 +186,7 @@ internal fun aRoomListRoomSummary(
     isTombstoned: Boolean = false,
     isSpace: Boolean = false,
     directUserPresence: UserPresence? = null,
+    myClawSessionStatus: MyClawSessionStatus? = null,
 ) = RoomListRoomSummary(
     id = id,
     roomId = RoomId(id),
@@ -208,4 +211,22 @@ internal fun aRoomListRoomSummary(
     isTombstoned = isTombstoned,
     isSpace = isSpace,
     directUserPresence = directUserPresence,
+    myClawSessionStatus = myClawSessionStatus,
+)
+
+internal fun aMyClawSessionStatus(
+    roomId: RoomId = RoomId("!roomId:domain"),
+    state: MyClawSessionStatusState = MyClawSessionStatusState.WAITING_LLM,
+) = MyClawSessionStatus(
+    roomId = roomId,
+    sessionId = "sess_123",
+    state = state,
+    label = when (state) {
+        MyClawSessionStatusState.WAITING_LLM -> "Waiting for model"
+        MyClawSessionStatusState.WAITING_AGENT -> "Waiting for agent"
+        MyClawSessionStatusState.IDLE -> "Idle"
+        MyClawSessionStatusState.RUNNING -> "Running"
+    },
+    updatedAtMillis = null,
+    expiresAtMillis = Long.MAX_VALUE,
 )

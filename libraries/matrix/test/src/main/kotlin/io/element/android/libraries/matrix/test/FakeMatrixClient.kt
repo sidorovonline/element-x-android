@@ -24,6 +24,7 @@ import io.element.android.libraries.matrix.api.linknewdevice.LinkDesktopHandler
 import io.element.android.libraries.matrix.api.linknewdevice.LinkMobileHandler
 import io.element.android.libraries.matrix.api.media.MatrixMediaLoader
 import io.element.android.libraries.matrix.api.media.MediaPreviewService
+import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatusService
 import io.element.android.libraries.matrix.api.notification.NotificationService
 import io.element.android.libraries.matrix.api.notificationsettings.NotificationSettingsService
 import io.element.android.libraries.matrix.api.oauth.AccountManagementAction
@@ -48,6 +49,7 @@ import io.element.android.libraries.matrix.api.verification.SessionVerificationS
 import io.element.android.libraries.matrix.test.encryption.FakeEncryptionService
 import io.element.android.libraries.matrix.test.media.FakeMatrixMediaLoader
 import io.element.android.libraries.matrix.test.media.FakeMediaPreviewService
+import io.element.android.libraries.matrix.test.myclaw.FakeMyClawSessionStatusService
 import io.element.android.libraries.matrix.test.notification.FakeNotificationService
 import io.element.android.libraries.matrix.test.notificationsettings.FakeNotificationSettingsService
 import io.element.android.libraries.matrix.test.pushers.FakePushersService
@@ -90,6 +92,7 @@ class FakeMatrixClient(
     override val encryptionService: EncryptionService = FakeEncryptionService(),
     override val roomDirectoryService: RoomDirectoryService = FakeRoomDirectoryService(),
     override val mediaPreviewService: MediaPreviewService = FakeMediaPreviewService(),
+    override val myClawSessionStatusService: MyClawSessionStatusService = FakeMyClawSessionStatusService(),
     override val roomMembershipObserver: RoomMembershipObserver = RoomMembershipObserver(),
     private val homeserverCapabilitiesProvider: FakeHomeserverCapabilitiesProvider = FakeHomeserverCapabilitiesProvider(),
     private val accountManagementUrlResult: (AccountManagementAction?) -> Result<String?> = { lambdaError() },

@@ -8,10 +8,27 @@
 
 package io.element.android.features.home.impl.datasource
 
+import com.google.common.truth.Truth.assertThat
 import io.element.android.libraries.dateformatter.api.DateFormatter
 import io.element.android.libraries.dateformatter.test.FakeDateFormatter
 import io.element.android.libraries.eventformatter.api.RoomLatestEventFormatter
 import io.element.android.libraries.eventformatter.test.FakeRoomLatestEventFormatter
+import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatusState
+import io.element.android.libraries.matrix.test.room.aRoomSummary
+import org.junit.Test
+
+class RoomListRoomSummaryFactoryTest {
+    @Test
+    fun `create includes MyClaw session status`() {
+        val status = io.element.android.features.home.impl.model.aMyClawSessionStatus(state = MyClawSessionStatusState.WAITING_AGENT)
+        val result = aRoomListRoomSummaryFactory().create(
+            roomSummary = aRoomSummary(roomId = status.roomId),
+            myClawSessionStatus = status,
+        )
+
+        assertThat(result.myClawSessionStatus).isEqualTo(status)
+    }
+}
 
 fun aRoomListRoomSummaryFactory(
     dateFormatter: DateFormatter = FakeDateFormatter { _, _, _ -> "Today" },

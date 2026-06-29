@@ -17,6 +17,7 @@ import io.element.android.libraries.dateformatter.api.DateFormatter
 import io.element.android.libraries.dateformatter.api.DateFormatterMode
 import io.element.android.libraries.designsystem.components.avatar.AvatarSize
 import io.element.android.libraries.eventformatter.api.RoomLatestEventFormatter
+import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatus
 import io.element.android.libraries.matrix.api.room.CallIntentConsensus
 import io.element.android.libraries.matrix.api.room.CurrentUserMembership
 import io.element.android.libraries.matrix.api.roomlist.LatestEventValue
@@ -30,7 +31,7 @@ class RoomListRoomSummaryFactory(
     private val dateFormatter: DateFormatter,
     private val roomLatestEventFormatter: RoomLatestEventFormatter,
 ) {
-    fun create(roomSummary: RoomSummary): RoomListRoomSummary {
+    fun create(roomSummary: RoomSummary, myClawSessionStatus: MyClawSessionStatus? = null): RoomListRoomSummary {
         val roomInfo = roomSummary.info
         val avatarData = roomInfo.getAvatarData(size = AvatarSize.RoomListItem)
         return RoomListRoomSummary(
@@ -60,6 +61,7 @@ class RoomListRoomSummaryFactory(
             inviteSender = roomInfo.inviter?.toInviteSender(),
             isDm = roomInfo.isDm,
             directUserPresence = roomSummary.directUserPresence,
+            myClawSessionStatus = myClawSessionStatus,
             canonicalAlias = roomInfo.canonicalAlias,
             displayType = when (roomInfo.currentUserMembership) {
                 CurrentUserMembership.INVITED -> {

@@ -18,13 +18,14 @@ import io.element.android.libraries.matrix.api.roomlist.RoomList
 import io.element.android.libraries.matrix.api.roomlist.RoomListFilter
 import io.element.android.libraries.matrix.api.roomlist.RoomListService
 import io.element.android.libraries.matrix.api.roomlist.updateVisibleRange
+import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatusService
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
 
 private const val PAGE_SIZE = 30
 
@@ -34,6 +35,7 @@ class RoomListSearchDataSource(
     roomListService: RoomListService,
     coroutineDispatchers: CoroutineDispatchers,
     private val roomSummaryFactory: RoomListRoomSummaryFactory,
+    private val myClawSessionStatusService: MyClawSessionStatusService,
 ) {
     @AssistedFactory
     interface Factory {
@@ -47,9 +49,14 @@ class RoomListSearchDataSource(
     )
 
     val roomSummaries: Flow<ImmutableList<RoomListRoomSummary>> = roomList.summaries
-        .map { roomSummaries ->
+        .combine(myClawSessionStatusService.statuses) { roomSummaries, statuses ->
             roomSummaries
-                .map(roomSummaryFactory::create)
+                .map { roomSummary ->
+                    roomSummaryFactory.create(
+                        roomSummary = roomSummary,
+                        myClawSessionStatus = statuses[roomSummary.roomId],
+                    )
+                }
                 .toImmutableList()
         }
         .flowOn(coroutineDispatchers.computation)

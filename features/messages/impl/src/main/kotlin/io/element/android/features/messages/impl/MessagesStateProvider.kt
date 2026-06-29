@@ -48,6 +48,7 @@ import io.element.android.libraries.designsystem.preview.ROOM_NAME
 import io.element.android.libraries.matrix.api.core.RoomId
 import io.element.android.libraries.matrix.api.core.ThreadId
 import io.element.android.libraries.matrix.api.encryption.identity.IdentityState
+import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatus
 import io.element.android.libraries.matrix.api.room.tombstone.SuccessorRoom
 import io.element.android.libraries.matrix.api.timeline.Timeline
 import io.element.android.libraries.matrix.api.user.UserPresence
@@ -123,6 +124,7 @@ fun aMessagesState(
     pinnedMessagesBannerState: PinnedMessagesBannerState = aLoadedPinnedMessagesBannerState(),
     dmUserVerificationState: IdentityState? = null,
     dmUserPresence: UserPresence? = null,
+    myClawSessionStatus: MyClawSessionStatus? = null,
     roomMemberModerationState: RoomMemberModerationState = aRoomMemberModerationState(),
     topBarSharedHistoryIcon: SharedHistoryIcon = SharedHistoryIcon.NONE,
     successorRoom: SuccessorRoom? = null,
@@ -157,6 +159,7 @@ fun aMessagesState(
     pinnedMessagesBannerState = pinnedMessagesBannerState,
     dmUserVerificationState = dmUserVerificationState,
     dmUserPresence = dmUserPresence,
+    myClawSessionStatus = myClawSessionStatus,
     roomMemberModerationState = roomMemberModerationState,
     topBarSharedHistoryIcon = topBarSharedHistoryIcon,
     successorRoom = successorRoom,

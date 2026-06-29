@@ -47,9 +47,13 @@ import io.element.android.libraries.designsystem.theme.components.HorizontalDivi
 import io.element.android.libraries.designsystem.theme.components.Icon
 import io.element.android.libraries.designsystem.theme.components.Text
 import io.element.android.libraries.designsystem.theme.components.TopAppBar
+import io.element.android.libraries.matrix.api.core.RoomId
 import io.element.android.libraries.matrix.api.encryption.identity.IdentityState
+import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatus
+import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatusState
 import io.element.android.libraries.matrix.api.user.UserPresence
 import io.element.android.libraries.matrix.ui.components.AvatarWithPresence
+import io.element.android.libraries.matrix.ui.components.MyClawSessionStatusPill
 import io.element.android.libraries.matrix.ui.components.aMatrixUserList
 import io.element.android.libraries.matrix.ui.model.getAvatarData
 import io.element.android.libraries.ui.strings.CommonStrings
@@ -66,6 +70,7 @@ internal fun MessagesViewTopBar(
     heroes: ImmutableList<AvatarData>,
     dmUserIdentityState: IdentityState?,
     dmUserPresence: UserPresence?,
+    myClawSessionStatus: MyClawSessionStatus?,
     sharedHistoryIcon: SharedHistoryIcon,
     onRoomDetailsClick: () -> Unit,
     onBackClick: () -> Unit,
@@ -98,6 +103,8 @@ internal fun MessagesViewTopBar(
                 )
 
                 val iconModifier = Modifier.size(16.dp)
+
+                MyClawSessionStatusPill(status = myClawSessionStatus)
 
                 when (dmUserIdentityState) {
                     IdentityState.Verified -> {
@@ -189,6 +196,7 @@ internal fun MessagesViewTopBarPreview() = ElementPreview {
         roomCallState: RoomCallState = RoomCallState.Unavailable,
         dmUserIdentityState: IdentityState? = null,
         dmUserPresence: UserPresence? = null,
+        myClawSessionStatus: MyClawSessionStatus? = null,
         sharedHistoryIcon: SharedHistoryIcon = SharedHistoryIcon.NONE,
         displayThreads: Boolean = false,
     ) = MessagesViewTopBar(
@@ -198,6 +206,7 @@ internal fun MessagesViewTopBarPreview() = ElementPreview {
         heroes = heroes,
         dmUserIdentityState = dmUserIdentityState,
         dmUserPresence = dmUserPresence,
+        myClawSessionStatus = myClawSessionStatus,
         sharedHistoryIcon = sharedHistoryIcon,
         onRoomDetailsClick = {},
         onBackClick = {},
@@ -253,5 +262,24 @@ internal fun MessagesViewTopBarPreview() = ElementPreview {
         AMessagesViewTopBar(
             displayThreads = true,
         )
+        HorizontalDivider()
+        AMessagesViewTopBar(
+            roomName = "A MyClaw room",
+            myClawSessionStatus = aMyClawSessionStatus(MyClawSessionStatusState.WAITING_LLM),
+        )
     }
 }
+
+private fun aMyClawSessionStatus(state: MyClawSessionStatusState) = MyClawSessionStatus(
+    roomId = RoomId("!room:example.org"),
+    sessionId = "sess_123",
+    state = state,
+    label = when (state) {
+        MyClawSessionStatusState.WAITING_LLM -> "Waiting for model"
+        MyClawSessionStatusState.WAITING_AGENT -> "Waiting for agent"
+        MyClawSessionStatusState.IDLE -> "Idle"
+        MyClawSessionStatusState.RUNNING -> "Running"
+    },
+    updatedAtMillis = null,
+    expiresAtMillis = Long.MAX_VALUE,
+)

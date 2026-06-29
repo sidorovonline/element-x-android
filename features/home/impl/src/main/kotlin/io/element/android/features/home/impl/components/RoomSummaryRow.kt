@@ -64,6 +64,7 @@ import io.element.android.libraries.matrix.api.notification.CallIntent
 import io.element.android.libraries.matrix.api.room.RoomNotificationMode
 import io.element.android.libraries.matrix.ui.components.AvatarWithPresence
 import io.element.android.libraries.matrix.ui.components.InviteSenderView
+import io.element.android.libraries.matrix.ui.components.MyClawSessionStatusBadge
 import io.element.android.libraries.matrix.ui.model.InviteSender
 import io.element.android.libraries.ui.strings.CommonStrings
 import timber.log.Timber
@@ -193,19 +194,25 @@ private fun RoomSummaryScaffoldRow(
             .padding(horizontal = 16.dp, vertical = 11.dp)
             .height(IntrinsicSize.Min),
     ) {
-        AvatarWithPresence(
-            avatarData = room.avatarData,
-            avatarType = if (room.isSpace) {
-                AvatarType.Space(isTombstoned = room.isTombstoned)
-            } else {
-                AvatarType.Room(
-                    heroes = room.heroes,
-                    isTombstoned = room.isTombstoned,
-                )
-            },
-            presence = room.directUserPresence.takeIf { room.isDirect || room.isDm },
-            hideImage = hideAvatarImage,
-        )
+        Box {
+            AvatarWithPresence(
+                avatarData = room.avatarData,
+                avatarType = if (room.isSpace) {
+                    AvatarType.Space(isTombstoned = room.isTombstoned)
+                } else {
+                    AvatarType.Room(
+                        heroes = room.heroes,
+                        isTombstoned = room.isTombstoned,
+                    )
+                },
+                presence = room.directUserPresence.takeIf { room.isDirect || room.isDm },
+                hideImage = hideAvatarImage,
+            )
+            MyClawSessionStatusBadge(
+                status = room.myClawSessionStatus,
+                modifier = Modifier.align(Alignment.TopEnd),
+            )
+        }
         Spacer(modifier = Modifier.width(16.dp))
         Column(
             modifier = Modifier.fillMaxWidth(),

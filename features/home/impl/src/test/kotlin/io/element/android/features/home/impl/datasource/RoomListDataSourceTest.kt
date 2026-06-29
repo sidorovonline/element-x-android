@@ -17,18 +17,23 @@ import io.element.android.libraries.matrix.api.roomlist.RoomListService
 import io.element.android.libraries.matrix.test.A_ROOM_ID
 import io.element.android.libraries.matrix.test.A_ROOM_ID_2
 import io.element.android.libraries.matrix.test.A_ROOM_ID_3
+import io.element.android.libraries.matrix.test.myclaw.FakeMyClawSessionStatusService
 import io.element.android.libraries.matrix.test.notificationsettings.FakeNotificationSettingsService
 import io.element.android.libraries.matrix.test.room.aRoomSummary
 import io.element.android.libraries.matrix.test.roomlist.FakeDynamicRoomList
 import io.element.android.libraries.matrix.test.roomlist.FakeRoomListService
 import io.element.android.services.analytics.test.FakeAnalyticsService
 import io.element.android.tests.testutils.testCoroutineDispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 import java.time.Instant
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class RoomListDataSourceTest {
     @Test
     fun `when DateTimeObserver gets a date change, the room summaries are refreshed`() = runTest {
@@ -260,15 +265,79 @@ class RoomListDataSourceTest {
         }
     }
 
+    @Test
+    fun `visible rooms refresh MyClaw session status periodically without visible range changes`() = runTest {
+        val myClawSessionStatusService = FakeMyClawSessionStatusService()
+        val roomList = FakeDynamicRoomList(summaries = MutableStateFlow(listOf(aRoomSummary(roomId = A_ROOM_ID), aRoomSummary(roomId = A_ROOM_ID_2))))
+        val roomListService = FakeRoomListService(
+            createRoomListLambda = { roomList }
+        ).apply {
+            postState(RoomListService.State.Running)
+        }
+        val roomListDataSource = createRoomListDataSource(
+            roomListService = roomListService,
+            myClawSessionStatusService = myClawSessionStatusService,
+        )
+
+        roomListDataSource.launchIn(backgroundScope)
+        runCurrent()
+        roomListDataSource.updateVisibleRange(0..1)
+        advanceTimeBy(300L)
+        runCurrent()
+
+        assertThat(myClawSessionStatusService.requestedRoomIds).containsAtLeast(A_ROOM_ID, A_ROOM_ID_2)
+        val requestCountAfterInitialRefresh = myClawSessionStatusService.requestedRoomIds.size
+
+        advanceTimeBy(8 * 60 * 1_000L)
+        runCurrent()
+
+        assertThat(myClawSessionStatusService.requestedRoomIds.size).isAtLeast(requestCountAfterInitialRefresh + 2)
+    }
+
+    @Test
+    fun `empty visible range cancels MyClaw session status refresh`() = runTest {
+        val myClawSessionStatusService = FakeMyClawSessionStatusService()
+        val roomList = FakeDynamicRoomList(summaries = MutableStateFlow(listOf(aRoomSummary(roomId = A_ROOM_ID), aRoomSummary(roomId = A_ROOM_ID_2))))
+        val roomListService = FakeRoomListService(
+            createRoomListLambda = { roomList }
+        ).apply {
+            postState(RoomListService.State.Running)
+        }
+        val roomListDataSource = createRoomListDataSource(
+            roomListService = roomListService,
+            myClawSessionStatusService = myClawSessionStatusService,
+        )
+
+        roomListDataSource.launchIn(backgroundScope)
+        runCurrent()
+        roomListDataSource.updateVisibleRange(0..1)
+        advanceTimeBy(300L)
+        runCurrent()
+
+        assertThat(myClawSessionStatusService.requestedRoomIds).containsAtLeast(A_ROOM_ID, A_ROOM_ID_2)
+
+        roomListDataSource.updateVisibleRange(0 until 0)
+        advanceTimeBy(300L)
+        runCurrent()
+        val requestCountAfterEmptyRange = myClawSessionStatusService.requestedRoomIds.size
+
+        advanceTimeBy(8 * 60 * 1_000L)
+        runCurrent()
+
+        assertThat(myClawSessionStatusService.requestedRoomIds).hasSize(requestCountAfterEmptyRange)
+    }
+
     private fun TestScope.createRoomListDataSource(
         roomListService: FakeRoomListService = FakeRoomListService(),
         roomListRoomSummaryFactory: RoomListRoomSummaryFactory = aRoomListRoomSummaryFactory(),
         notificationSettingsService: FakeNotificationSettingsService = FakeNotificationSettingsService(),
         dateTimeObserver: FakeDateTimeObserver = FakeDateTimeObserver(),
         analyticsService: FakeAnalyticsService = FakeAnalyticsService(),
+        myClawSessionStatusService: FakeMyClawSessionStatusService = FakeMyClawSessionStatusService(),
     ) = RoomListDataSource(
         roomListService = roomListService,
         roomListRoomSummaryFactory = roomListRoomSummaryFactory,
+        myClawSessionStatusService = myClawSessionStatusService,
         coroutineDispatchers = testCoroutineDispatchers(),
         notificationSettingsService = notificationSettingsService,
         sessionCoroutineScope = backgroundScope,

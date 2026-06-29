@@ -61,6 +61,9 @@ import io.element.android.libraries.matrix.api.core.UserId
 import io.element.android.libraries.matrix.api.core.toThreadId
 import io.element.android.libraries.matrix.api.encryption.identity.IdentityState
 import io.element.android.libraries.matrix.api.media.MediaSource
+import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatus
+import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatusService
+import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatusState
 import io.element.android.libraries.matrix.api.permalink.PermalinkParser
 import io.element.android.libraries.matrix.api.room.MessageEventType
 import io.element.android.libraries.matrix.api.room.RoomMembersState
@@ -84,6 +87,7 @@ import io.element.android.libraries.matrix.test.A_USER_ID
 import io.element.android.libraries.matrix.test.A_USER_ID_2
 import io.element.android.libraries.matrix.test.core.aBuildMeta
 import io.element.android.libraries.matrix.test.encryption.FakeEncryptionService
+import io.element.android.libraries.matrix.test.myclaw.FakeMyClawSessionStatusService
 import io.element.android.libraries.matrix.test.permalink.FakePermalinkParser
 import io.element.android.libraries.matrix.test.room.FakeBaseRoom
 import io.element.android.libraries.matrix.test.room.FakeJoinedRoom
@@ -115,6 +119,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -144,6 +149,49 @@ class MessagesPresenterTest {
             assertThat(initialState.showReinvitePrompt).isFalse()
             assertThat(initialState.showLiveLocationShareBanner).isFalse()
         }
+    }
+
+    @Test
+    fun `present - exposes MyClaw session status for current room`() = runTest {
+        val myClawSessionStatusService = FakeMyClawSessionStatusService()
+        val presenter = createMessagesPresenter(
+            myClawSessionStatusService = myClawSessionStatusService,
+        )
+
+        presenter.testWithLifecycleOwner {
+            consumeItemsUntilTimeout()
+            myClawSessionStatusService.givenStatus(
+                aMyClawSessionStatus(
+                    roomId = A_ROOM_ID,
+                    state = MyClawSessionStatusState.WAITING_LLM,
+                )
+            )
+            val updatedState = consumeItemsUntilPredicate {
+                it.myClawSessionStatus?.state == MyClawSessionStatusState.WAITING_LLM
+            }.last()
+
+            assertThat(myClawSessionStatusService.requestedRoomIds).contains(A_ROOM_ID)
+            assertThat(updatedState.myClawSessionStatus?.label).isEqualTo("Waiting for model")
+        }
+    }
+
+    @Test
+    fun `MyClaw session status refresh loop renews periodically`() = runTest {
+        val myClawSessionStatusService = FakeMyClawSessionStatusService()
+        val refreshJob = backgroundScope.launchMyClawSessionStatusRefreshLoop(
+            roomId = A_ROOM_ID,
+            myClawSessionStatusService = myClawSessionStatusService,
+            refreshInterval = 1.seconds,
+        )
+
+        runCurrent()
+        assertThat(myClawSessionStatusService.requestedRoomIds).containsExactly(A_ROOM_ID)
+
+        advanceTimeBy(1_000L)
+        runCurrent()
+
+        assertThat(myClawSessionStatusService.requestedRoomIds).containsExactly(A_ROOM_ID, A_ROOM_ID).inOrder()
+        refreshJob.cancel()
     }
 
     @Test
@@ -1383,6 +1431,7 @@ class MessagesPresenterTest {
         addRecentEmoji: AddRecentEmoji = AddRecentEmoji { _ -> lambdaError() },
         markAsFullyRead: MarkAsFullyRead = FakeMarkAsFullyRead(),
         liveLocationShareManager: FakeActiveLiveLocationShareManager = FakeActiveLiveLocationShareManager(),
+        myClawSessionStatusService: MyClawSessionStatusService = FakeMyClawSessionStatusService(),
     ): MessagesPresenter {
         return MessagesPresenter(
             navigator = navigator,
@@ -1413,7 +1462,25 @@ class MessagesPresenterTest {
             addRecentEmoji = addRecentEmoji,
             markAsFullyRead = markAsFullyRead,
             liveLocationShareManager = liveLocationShareManager,
+            myClawSessionStatusService = myClawSessionStatusService,
             sessionCoroutineScope = backgroundScope,
         )
     }
 }
+
+private fun aMyClawSessionStatus(
+    roomId: RoomId,
+    state: MyClawSessionStatusState,
+) = MyClawSessionStatus(
+    roomId = roomId,
+    sessionId = "sess_123",
+    state = state,
+    label = when (state) {
+        MyClawSessionStatusState.WAITING_LLM -> "Waiting for model"
+        MyClawSessionStatusState.WAITING_AGENT -> "Waiting for agent"
+        MyClawSessionStatusState.IDLE -> "Idle"
+        MyClawSessionStatusState.RUNNING -> "Running"
+    },
+    updatedAtMillis = null,
+    expiresAtMillis = Long.MAX_VALUE,
+)
