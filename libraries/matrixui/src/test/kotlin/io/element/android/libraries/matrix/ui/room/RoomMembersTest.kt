@@ -8,12 +8,17 @@
 
 package io.element.android.libraries.matrix.ui.room
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import app.cash.molecule.RecompositionMode
 import app.cash.molecule.moleculeFlow
 import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
 import io.element.android.libraries.matrix.api.room.RoomMembersState
 import io.element.android.libraries.matrix.api.room.RoomMembershipState
+import io.element.android.libraries.matrix.api.user.PresenceState
+import io.element.android.libraries.matrix.api.user.UserPresence
 import io.element.android.libraries.matrix.test.A_USER_ID
 import io.element.android.libraries.matrix.test.A_USER_ID_2
 import io.element.android.libraries.matrix.test.A_USER_ID_3
@@ -41,6 +46,33 @@ class RoomMembersTest {
             )
         }.test {
             assertThat(awaitItem().value).isEqualTo(roomMember2)
+        }
+    }
+
+    @Test
+    fun `getDirectRoomMember updates when members state changes`() = runTest {
+        val joinedRoom = FakeBaseRoom(
+            sessionId = A_USER_ID,
+            initialRoomInfo = aRoomInfo(isDm = true)
+        )
+        val presence = UserPresence(
+            state = PresenceState.ONLINE,
+            statusMessage = null,
+            lastActiveAgo = null,
+            currentlyActive = null,
+        )
+        val roomMemberWithPresence = roomMember2.copy(presence = presence)
+        var roomMembersState by mutableStateOf<RoomMembersState>(RoomMembersState.Pending())
+        moleculeFlow(RecompositionMode.Immediate) {
+            joinedRoom.getDirectRoomMember(roomMembersState).value
+        }.test {
+            assertThat(awaitItem()).isNull()
+
+            roomMembersState = RoomMembersState.Ready(persistentListOf(roomMember1, roomMemberWithPresence))
+
+            val updatedRoomMember = awaitItem()
+            assertThat(updatedRoomMember).isEqualTo(roomMemberWithPresence)
+            assertThat(updatedRoomMember?.presence).isEqualTo(presence)
         }
     }
 

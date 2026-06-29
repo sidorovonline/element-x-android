@@ -8,18 +8,26 @@
 
 package io.element.android.libraries.matrix.impl.roomlist
 
+import io.element.android.libraries.matrix.api.core.SessionId
 import io.element.android.libraries.matrix.api.core.UserId
+import io.element.android.libraries.matrix.api.room.RoomInfo
 import io.element.android.libraries.matrix.api.roomlist.LatestEventValue
 import io.element.android.libraries.matrix.api.roomlist.RoomSummary
+import io.element.android.libraries.matrix.api.user.UserPresence
 import io.element.android.libraries.matrix.impl.room.RoomInfoMapper
+import io.element.android.libraries.matrix.impl.room.member.RoomMemberMapper
 import io.element.android.libraries.matrix.impl.timeline.item.event.TimelineEventContentMapper
 import io.element.android.libraries.matrix.impl.timeline.item.event.map
+import io.element.android.libraries.matrix.impl.user.NoOpUserPresenceRepository
+import io.element.android.libraries.matrix.impl.user.UserPresenceRepository
 import org.matrix.rustcomponents.sdk.Room
 import org.matrix.rustcomponents.sdk.use
 import uniffi.matrix_sdk_ui.LatestEventValueLocalState
 import org.matrix.rustcomponents.sdk.LatestEventValue as RustLatestEventValue
 
 class RoomSummaryFactory(
+    private val sessionId: SessionId,
+    private val userPresenceRepository: UserPresenceRepository = NoOpUserPresenceRepository,
     private val contentMapper: TimelineEventContentMapper = TimelineEventContentMapper(),
     private val roomInfoMapper: RoomInfoMapper = RoomInfoMapper(),
 ) {
@@ -63,6 +71,22 @@ class RoomSummaryFactory(
         return RoomSummary(
             info = roomInfo,
             latestEvent = latestEvent,
+            directUserPresence = room.directUserPresence(roomInfo),
         )
+    }
+
+    private suspend fun Room.directUserPresence(roomInfo: RoomInfo): UserPresence? {
+        if (!roomInfo.isDm) return null
+        return membersNoSync().use { members ->
+            members.nextChunk(members.len())
+                ?.map(RoomMemberMapper::map)
+                ?.firstOrNull { roomMember ->
+                    !roomMember.isServiceMember &&
+                        roomMember.userId != sessionId &&
+                        roomMember.membership.isActive()
+                }
+                ?.let(userPresenceRepository::enrich)
+                ?.presence
+        }
     }
 }

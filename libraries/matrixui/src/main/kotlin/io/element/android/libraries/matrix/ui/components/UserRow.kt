@@ -22,10 +22,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.element.android.compound.theme.ElementTheme
-import io.element.android.libraries.designsystem.components.avatar.Avatar
 import io.element.android.libraries.designsystem.components.avatar.AvatarData
 import io.element.android.libraries.designsystem.components.avatar.AvatarType
 import io.element.android.libraries.designsystem.theme.components.Text
+import io.element.android.libraries.matrix.api.user.UserPresence
 
 @Composable
 internal fun UserRow(
@@ -35,6 +35,7 @@ internal fun UserRow(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     verticalSpaceWidth: Dp = 12.dp,
+    presence: UserPresence? = null,
     trailingContent: @Composable (() -> Unit)? = null,
 ) {
     Row(
@@ -43,9 +44,10 @@ internal fun UserRow(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Avatar(
+        AvatarWithPresence(
             avatarData = avatarData,
             avatarType = AvatarType.User,
+            presence = presence,
         )
         Spacer(modifier = Modifier.width(verticalSpaceWidth))
         Column(

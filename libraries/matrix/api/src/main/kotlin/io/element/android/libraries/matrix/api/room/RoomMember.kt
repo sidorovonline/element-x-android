@@ -11,6 +11,7 @@ package io.element.android.libraries.matrix.api.room
 import androidx.compose.runtime.Immutable
 import io.element.android.libraries.matrix.api.core.UserId
 import io.element.android.libraries.matrix.api.user.MatrixUser
+import io.element.android.libraries.matrix.api.user.UserPresence
 
 data class RoomMember(
     val userId: UserId,
@@ -23,6 +24,7 @@ data class RoomMember(
     val role: Role,
     val membershipChangeReason: String?,
     val isServiceMember: Boolean,
+    val presence: UserPresence? = null,
 ) {
     /**
      * Role of the RoomMember, based on its [powerLevel].

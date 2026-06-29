@@ -87,6 +87,7 @@ import io.element.android.libraries.matrix.api.room.RoomMember
 import io.element.android.libraries.matrix.api.room.RoomNotificationMode
 import io.element.android.libraries.matrix.api.room.getBestName
 import io.element.android.libraries.matrix.api.user.MatrixUser
+import io.element.android.libraries.matrix.ui.components.AvatarWithPresence
 import io.element.android.libraries.matrix.ui.model.getAvatarData
 import io.element.android.libraries.testtags.TestTags
 import io.element.android.libraries.testtags.testTag
@@ -512,7 +513,7 @@ private fun DmHeaderSection(
             .padding(horizontal = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Avatar(
+        AvatarWithPresence(
             avatarData = AvatarData(otherMember.userId.value, roomName, otherMember.avatarUrl, AvatarSize.RoomDetailsHeader),
             avatarType = AvatarType.Room(
                 heroes = persistentListOf(
@@ -520,9 +521,9 @@ private fun DmHeaderSection(
                 ),
                 isTombstoned = isTombstoned,
             ),
+            presence = otherMember.presence,
             contentDescription = stringResource(CommonStrings.a11y_room_avatar),
             modifier = Modifier
-                .clip(CircleShape)
                 .clickable(
                     enabled = otherMember.avatarUrl != null,
                     onClickLabel = stringResource(CommonStrings.action_view),

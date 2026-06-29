@@ -8,11 +8,14 @@
 
 package io.element.android.libraries.matrix.impl.roomlist
 
+import io.element.android.libraries.matrix.api.core.SessionId
 import io.element.android.libraries.matrix.api.roomlist.DynamicRoomList
 import io.element.android.libraries.matrix.api.roomlist.RoomList
 import io.element.android.libraries.matrix.api.roomlist.RoomListFilter
 import io.element.android.libraries.matrix.api.roomlist.RoomListFilter.Companion.all
 import io.element.android.libraries.matrix.api.roomlist.RoomSummary
+import io.element.android.libraries.matrix.impl.user.NoOpUserPresenceRepository
+import io.element.android.libraries.matrix.impl.user.UserPresenceRepository
 import io.element.android.services.analytics.api.AnalyticsLongRunningTransaction
 import io.element.android.services.analytics.api.AnalyticsService
 import io.element.android.services.analytics.api.finishLongRunningTransaction
@@ -30,10 +33,15 @@ import kotlin.coroutines.CoroutineContext
 import org.matrix.rustcomponents.sdk.RoomList as InnerRoomList
 
 internal class RoomListFactory(
+    sessionId: SessionId,
     private val innerRoomListService: RoomListService,
     private val analyticsService: AnalyticsService,
+    private val userPresenceRepository: UserPresenceRepository = NoOpUserPresenceRepository,
 ) {
-    private val roomSummaryFactory: RoomSummaryFactory = RoomSummaryFactory()
+    private val roomSummaryFactory: RoomSummaryFactory = RoomSummaryFactory(
+        sessionId = sessionId,
+        userPresenceRepository = userPresenceRepository,
+    )
 
     /**
      * Creates a room list that can be used to load more rooms and filter them dynamically.
@@ -80,6 +88,9 @@ internal class RoomListFactory(
         }.invokeOnCompletion {
             innerRoomList?.destroy()
         }
+        userPresenceRepository.presences
+            .onEach { processor.rebuildRoomSummaries() }
+            .launchIn(coroutineScope)
         return RustDynamicRoomList(
             summaries = summariesFlow,
             loadingState = loadingStateFlow,

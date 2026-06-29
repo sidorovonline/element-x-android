@@ -12,12 +12,14 @@ import io.element.android.libraries.matrix.api.core.UserId
 import org.matrix.rustcomponents.sdk.MembershipState
 import org.matrix.rustcomponents.sdk.PowerLevel
 import org.matrix.rustcomponents.sdk.RoomMember
+import org.matrix.rustcomponents.sdk.UserPresence
 import uniffi.matrix_sdk.RoomMemberRole
 
 internal fun aRustRoomMember(
     userId: UserId,
     displayName: String? = null,
     avatarUrl: String? = null,
+    presence: UserPresence? = null,
     membership: MembershipState = MembershipState.Join,
     isNameAmbiguous: Boolean = false,
     powerLevel: PowerLevel = PowerLevel.Value(0L),
@@ -29,6 +31,7 @@ internal fun aRustRoomMember(
     userId = userId.value,
     displayName = displayName,
     avatarUrl = avatarUrl,
+    presence = presence,
     membership = membership,
     isNameAmbiguous = isNameAmbiguous,
     powerLevel = powerLevel,

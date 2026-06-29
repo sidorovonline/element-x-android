@@ -50,7 +50,6 @@ import io.element.android.libraries.core.extensions.orEmpty
 import io.element.android.libraries.core.extensions.toSafeLength
 import io.element.android.libraries.designsystem.atomic.atoms.UnreadIndicatorAtom
 import io.element.android.libraries.designsystem.atomic.molecules.InviteButtonsRowMolecule
-import io.element.android.libraries.designsystem.components.avatar.Avatar
 import io.element.android.libraries.designsystem.components.avatar.AvatarType
 import io.element.android.libraries.designsystem.modifiers.onKeyboardContextMenuAction
 import io.element.android.libraries.designsystem.preview.ElementPreview
@@ -63,6 +62,7 @@ import io.element.android.libraries.designsystem.theme.roomListRoomName
 import io.element.android.libraries.designsystem.theme.unreadIndicator
 import io.element.android.libraries.matrix.api.notification.CallIntent
 import io.element.android.libraries.matrix.api.room.RoomNotificationMode
+import io.element.android.libraries.matrix.ui.components.AvatarWithPresence
 import io.element.android.libraries.matrix.ui.components.InviteSenderView
 import io.element.android.libraries.matrix.ui.model.InviteSender
 import io.element.android.libraries.ui.strings.CommonStrings
@@ -193,7 +193,7 @@ private fun RoomSummaryScaffoldRow(
             .padding(horizontal = 16.dp, vertical = 11.dp)
             .height(IntrinsicSize.Min),
     ) {
-        Avatar(
+        AvatarWithPresence(
             avatarData = room.avatarData,
             avatarType = if (room.isSpace) {
                 AvatarType.Space(isTombstoned = room.isTombstoned)
@@ -203,6 +203,7 @@ private fun RoomSummaryScaffoldRow(
                     isTombstoned = room.isTombstoned,
                 )
             },
+            presence = room.directUserPresence.takeIf { room.isDirect || room.isDm },
             hideImage = hideAvatarImage,
         )
         Spacer(modifier = Modifier.width(16.dp))

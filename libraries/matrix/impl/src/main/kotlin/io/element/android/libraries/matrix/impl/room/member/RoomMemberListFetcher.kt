@@ -11,6 +11,8 @@ package io.element.android.libraries.matrix.impl.room.member
 import io.element.android.libraries.matrix.api.room.RoomMember
 import io.element.android.libraries.matrix.api.room.RoomMembersState
 import io.element.android.libraries.matrix.api.room.roomMembers
+import io.element.android.libraries.matrix.impl.user.NoOpUserPresenceRepository
+import io.element.android.libraries.matrix.impl.user.UserPresenceRepository
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.CoroutineDispatcher
@@ -33,6 +35,7 @@ import kotlin.coroutines.coroutineContext
 internal class RoomMemberListFetcher(
     private val room: RoomInterface,
     private val dispatcher: CoroutineDispatcher,
+    private val userPresenceRepository: UserPresenceRepository = NoOpUserPresenceRepository,
     private val pageSize: Int = 10_000,
 ) {
     enum class Source {
@@ -121,12 +124,29 @@ internal class RoomMemberListFetcher(
                     coroutineContext.ensureActive()
                     val chunk = iterator.nextChunk(pageSize.toUInt())
                     // Load next chunk. If null (no more items), exit the loop
-                    val members = chunk?.map(RoomMemberMapper::map) ?: break
+                    val members = chunk
+                        ?.map(RoomMemberMapper::map)
+                        ?.map(userPresenceRepository::enrich)
+                        ?: break
                     addAll(members)
                     Timber.i("Loaded first $size members for room $roomId")
                 }
             }
             results.toImmutableList()
+        }
+    }
+
+    fun applyPresenceCache() {
+        val currentState = _membersFlow.value
+        val enrichedMembers = currentState.roomMembers()
+            ?.map(userPresenceRepository::enrich)
+            ?.toImmutableList()
+            ?: return
+        _membersFlow.value = when (currentState) {
+            is RoomMembersState.Error -> currentState.copy(prevRoomMembers = enrichedMembers)
+            RoomMembersState.Unknown -> RoomMembersState.Unknown
+            is RoomMembersState.Pending -> currentState.copy(prevRoomMembers = enrichedMembers)
+            is RoomMembersState.Ready -> currentState.copy(roomMembers = enrichedMembers)
         }
     }
 

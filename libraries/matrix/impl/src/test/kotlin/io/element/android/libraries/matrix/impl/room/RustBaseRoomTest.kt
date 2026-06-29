@@ -19,6 +19,7 @@ import io.element.android.libraries.matrix.api.room.powerlevels.RoomPowerLevels
 import io.element.android.libraries.matrix.api.timeline.item.event.MembershipChange
 import io.element.android.libraries.matrix.impl.fixtures.fakes.FakeFfiRoom
 import io.element.android.libraries.matrix.impl.fixtures.fakes.FakeFfiRoomListService
+import io.element.android.libraries.matrix.impl.user.NoOpUserPresenceRepository
 import io.element.android.libraries.matrix.test.A_DEVICE_ID
 import io.element.android.libraries.matrix.test.A_SESSION_ID
 import io.element.android.libraries.matrix.test.A_USER_ID
@@ -174,6 +175,7 @@ class RustBaseRoomTest {
                 dispatchers = dispatchers,
             ),
             roomMembershipObserver = roomMembershipObserver,
+            userPresenceRepository = NoOpUserPresenceRepository,
             sessionCoroutineScope = backgroundScope,
             roomInfoMapper = RoomInfoMapper(),
             initialRoomInfo = initialRoomInfo,

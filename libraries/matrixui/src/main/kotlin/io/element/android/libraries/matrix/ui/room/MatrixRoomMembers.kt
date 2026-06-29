@@ -13,7 +13,6 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import io.element.android.libraries.matrix.api.core.UserId
 import io.element.android.libraries.matrix.api.room.BaseRoom
@@ -43,8 +42,10 @@ fun getRoomMemberAsState(roomMembersState: RoomMembersState, userId: UserId): St
 @Composable
 fun BaseRoom.getDirectRoomMember(roomMembersState: RoomMembersState): State<RoomMember?> {
     val roomInfo by roomInfoFlow.collectAsState()
-    return remember(roomInfo.isDm) {
-        mutableStateOf(roomMembersState.getDirectRoomMember(roomInfo, sessionId))
+    return remember(roomMembersState, roomInfo, sessionId) {
+        derivedStateOf {
+            roomMembersState.getDirectRoomMember(roomInfo, sessionId)
+        }
     }
 }
 

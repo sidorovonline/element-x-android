@@ -35,7 +35,6 @@ import io.element.android.features.messages.impl.SharedHistoryIcon
 import io.element.android.features.roomcall.api.RoomCallState
 import io.element.android.features.roomcall.api.aStandByCallState
 import io.element.android.features.roomcall.api.anOngoingCallState
-import io.element.android.libraries.designsystem.components.avatar.Avatar
 import io.element.android.libraries.designsystem.components.avatar.AvatarData
 import io.element.android.libraries.designsystem.components.avatar.AvatarSize
 import io.element.android.libraries.designsystem.components.avatar.AvatarType
@@ -49,6 +48,8 @@ import io.element.android.libraries.designsystem.theme.components.Icon
 import io.element.android.libraries.designsystem.theme.components.Text
 import io.element.android.libraries.designsystem.theme.components.TopAppBar
 import io.element.android.libraries.matrix.api.encryption.identity.IdentityState
+import io.element.android.libraries.matrix.api.user.UserPresence
+import io.element.android.libraries.matrix.ui.components.AvatarWithPresence
 import io.element.android.libraries.matrix.ui.components.aMatrixUserList
 import io.element.android.libraries.matrix.ui.model.getAvatarData
 import io.element.android.libraries.ui.strings.CommonStrings
@@ -64,6 +65,7 @@ internal fun MessagesViewTopBar(
     isTombstoned: Boolean,
     heroes: ImmutableList<AvatarData>,
     dmUserIdentityState: IdentityState?,
+    dmUserPresence: UserPresence?,
     sharedHistoryIcon: SharedHistoryIcon,
     onRoomDetailsClick: () -> Unit,
     onBackClick: () -> Unit,
@@ -91,6 +93,7 @@ internal fun MessagesViewTopBar(
                     roomAvatar = roomAvatar,
                     isTombstoned = isTombstoned,
                     heroes = heroes,
+                    dmUserPresence = dmUserPresence,
                     modifier = titleModifier
                 )
 
@@ -144,18 +147,20 @@ private fun RoomAvatarAndNameRow(
     roomAvatar: AvatarData,
     heroes: ImmutableList<AvatarData>,
     isTombstoned: Boolean,
+    dmUserPresence: UserPresence?,
     modifier: Modifier = Modifier
 ) {
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Avatar(
+        AvatarWithPresence(
             avatarData = roomAvatar,
             avatarType = AvatarType.Room(
                 heroes = heroes,
                 isTombstoned = isTombstoned,
             ),
+            presence = dmUserPresence,
         )
         Text(
             modifier = Modifier
@@ -183,6 +188,7 @@ internal fun MessagesViewTopBarPreview() = ElementPreview {
         heroes: ImmutableList<AvatarData> = persistentListOf(),
         roomCallState: RoomCallState = RoomCallState.Unavailable,
         dmUserIdentityState: IdentityState? = null,
+        dmUserPresence: UserPresence? = null,
         sharedHistoryIcon: SharedHistoryIcon = SharedHistoryIcon.NONE,
         displayThreads: Boolean = false,
     ) = MessagesViewTopBar(
@@ -191,6 +197,7 @@ internal fun MessagesViewTopBarPreview() = ElementPreview {
         isTombstoned = isTombstoned,
         heroes = heroes,
         dmUserIdentityState = dmUserIdentityState,
+        dmUserPresence = dmUserPresence,
         sharedHistoryIcon = sharedHistoryIcon,
         onRoomDetailsClick = {},
         onBackClick = {},

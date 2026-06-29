@@ -36,12 +36,15 @@ import io.element.android.libraries.matrix.impl.room.powerlevels.RustRoomPermiss
 import io.element.android.libraries.matrix.impl.room.tombstone.map
 import io.element.android.libraries.matrix.impl.roomdirectory.map
 import io.element.android.libraries.matrix.impl.timeline.toRustReceiptType
+import io.element.android.libraries.matrix.impl.user.UserPresenceRepository
 import io.element.android.libraries.matrix.impl.util.mxCallbackFlow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withContext
 import org.matrix.rustcomponents.sdk.CallDeclineListener
@@ -58,6 +61,7 @@ class RustBaseRoom(
     coroutineDispatchers: CoroutineDispatchers,
     private val roomSyncSubscriber: RoomSyncSubscriber,
     private val roomMembershipObserver: RoomMembershipObserver,
+    private val userPresenceRepository: UserPresenceRepository,
     sessionCoroutineScope: CoroutineScope,
     roomInfoMapper: RoomInfoMapper,
     initialRoomInfo: RoomInfo,
@@ -70,11 +74,15 @@ class RustBaseRoom(
     // ...except getMember methods as it could quickly fill the roomDispatcher...
     private val roomMembersDispatcher = coroutineDispatchers.io.limitedParallelism(8)
 
-    internal val roomMemberListFetcher = RoomMemberListFetcher(innerRoom, roomMembersDispatcher)
+    override val roomCoroutineScope = sessionCoroutineScope.childScope(coroutineDispatchers.main, "RoomScope-$roomId")
+
+    internal val roomMemberListFetcher = RoomMemberListFetcher(
+        room = innerRoom,
+        dispatcher = roomMembersDispatcher,
+        userPresenceRepository = userPresenceRepository,
+    )
 
     override val membersStateFlow: StateFlow<RoomMembersState> = roomMemberListFetcher.membersFlow
-
-    override val roomCoroutineScope = sessionCoroutineScope.childScope(coroutineDispatchers.main, "RoomScope-$roomId")
 
     override val roomInfoFlow: StateFlow<RoomInfo> = mxCallbackFlow {
         innerRoom.subscribeToRoomInfoUpdates(object : RoomInfoListener {
@@ -83,6 +91,12 @@ class RustBaseRoom(
             }
         })
     }.stateIn(roomCoroutineScope, started = SharingStarted.Lazily, initialValue = initialRoomInfo)
+
+    init {
+        userPresenceRepository.presences
+            .onEach { roomMemberListFetcher.applyPresenceCache() }
+            .launchIn(roomCoroutineScope)
+    }
 
     override fun predecessorRoom(): PredecessorRoom? {
         return runCatchingExceptions { innerRoom.predecessorRoom()?.map() }
@@ -106,7 +120,7 @@ class RustBaseRoom(
         runCatchingExceptions {
             innerRoom.members().use {
                 it.nextChunk(limit.toUInt()).orEmpty().map { roomMember ->
-                    RoomMemberMapper.map(roomMember)
+                    userPresenceRepository.enrich(RoomMemberMapper.map(roomMember))
                 }
             }
         }
@@ -119,6 +133,7 @@ class RustBaseRoom(
                     members.nextChunk(members.len())
                         ?.map(RoomMemberMapper::map)
                         ?.firstOrNull { roomMember -> !roomMember.isServiceMember && roomMember.userId != sessionId && roomMember.membership.isActive() }
+                        ?.let(userPresenceRepository::enrich)
                 }
             } else {
                 null
@@ -128,7 +143,7 @@ class RustBaseRoom(
 
     override suspend fun getUpdatedMember(userId: UserId): Result<RoomMember> = withContext(roomDispatcher) {
         runCatchingExceptions {
-            RoomMemberMapper.map(innerRoom.member(userId.value))
+            userPresenceRepository.enrich(RoomMemberMapper.map(innerRoom.member(userId.value)))
         }
     }
 

@@ -24,6 +24,7 @@ import io.element.android.libraries.matrix.api.room.tombstone.SuccessorRoom
 import io.element.android.libraries.matrix.api.roomlist.LatestEventValue
 import io.element.android.libraries.matrix.api.roomlist.RoomSummary
 import io.element.android.libraries.matrix.api.user.MatrixUser
+import io.element.android.libraries.matrix.api.user.UserPresence
 import io.element.android.libraries.matrix.test.A_ROOM_ID
 import io.element.android.libraries.matrix.test.A_ROOM_NAME
 import io.element.android.libraries.matrix.test.A_ROOM_RAW_NAME
@@ -34,9 +35,11 @@ import kotlinx.collections.immutable.toImmutableList
 fun aRoomSummary(
     info: RoomInfo = aRoomInfo(),
     latestEventValue: LatestEventValue = aRemoteLatestEvent(),
+    directUserPresence: UserPresence? = null,
 ) = RoomSummary(
     info = info,
     latestEvent = latestEventValue,
+    directUserPresence = directUserPresence,
 )
 
 fun aRoomSummary(
@@ -82,6 +85,7 @@ fun aRoomSummary(
     isLowPriority: Boolean = false,
     activeCallIntentConsensus: CallIntentConsensus = CallIntentConsensus.None,
     fullyReadEventId: EventId? = null,
+    directUserPresence: UserPresence? = null,
 ) = RoomSummary(
     info = RoomInfo(
         id = roomId,
@@ -125,4 +129,5 @@ fun aRoomSummary(
         fullyReadEventId = fullyReadEventId,
     ),
     latestEvent = latestEvent,
+    directUserPresence = directUserPresence,
 )

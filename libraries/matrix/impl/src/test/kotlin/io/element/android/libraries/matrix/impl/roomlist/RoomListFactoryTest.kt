@@ -10,6 +10,7 @@ package io.element.android.libraries.matrix.impl.roomlist
 
 import io.element.android.libraries.matrix.impl.fixtures.fakes.FakeFfiRoomList
 import io.element.android.libraries.matrix.impl.fixtures.fakes.FakeFfiRoomListService
+import io.element.android.libraries.matrix.test.A_SESSION_ID
 import io.element.android.services.analytics.test.FakeAnalyticsService
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
@@ -19,6 +20,7 @@ class RoomListFactoryTest {
     @Test
     fun `createRoomList should work`() = runTest {
         val sut = RoomListFactory(
+            sessionId = A_SESSION_ID,
             innerRoomListService = FakeFfiRoomListService(),
             analyticsService = FakeAnalyticsService(),
         )

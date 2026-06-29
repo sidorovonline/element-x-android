@@ -12,6 +12,7 @@ import com.google.common.truth.Truth.assertThat
 import io.element.android.libraries.matrix.api.roomlist.RoomListService
 import io.element.android.libraries.matrix.impl.fixtures.fakes.FakeFfiRoomListService
 import io.element.android.libraries.matrix.impl.room.RoomSyncSubscriber
+import io.element.android.libraries.matrix.test.A_SESSION_ID
 import io.element.android.services.analytics.test.FakeAnalyticsService
 import io.element.android.tests.testutils.testCoroutineDispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -49,6 +50,7 @@ private fun TestScope.createRustRoomListService(
     innerRoomListService = roomListService,
     sessionDispatcher = StandardTestDispatcher(testScheduler),
     roomListFactory = RoomListFactory(
+        sessionId = A_SESSION_ID,
         innerRoomListService = roomListService,
         analyticsService = FakeAnalyticsService(),
     ),

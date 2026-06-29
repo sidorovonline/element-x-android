@@ -24,6 +24,7 @@ import io.element.android.libraries.matrix.api.roomlist.awaitLoaded
 import io.element.android.libraries.matrix.impl.room.join.map
 import io.element.android.libraries.matrix.impl.room.preview.RoomPreviewInfoMapper
 import io.element.android.libraries.matrix.impl.roomlist.roomOrNull
+import io.element.android.libraries.matrix.impl.user.UserPresenceRepository
 import io.element.android.services.analytics.api.AnalyticsLongRunningTransaction
 import io.element.android.services.analytics.api.AnalyticsService
 import io.element.android.services.analytics.api.recordTransaction
@@ -62,6 +63,7 @@ class RustRoomFactory(
     private val featureFlagService: FeatureFlagService,
     private val roomMembershipObserver: RoomMembershipObserver,
     private val roomInfoMapper: RoomInfoMapper,
+    private val userPresenceRepository: UserPresenceRepository,
     private val analyticsService: AnalyticsService,
 ) {
     private val dispatcher = dispatchers.computation.limitedParallelism(1)
@@ -95,6 +97,7 @@ class RustRoomFactory(
         coroutineDispatchers = dispatchers,
         roomSyncSubscriber = roomSyncSubscriber,
         roomMembershipObserver = roomMembershipObserver,
+        userPresenceRepository = userPresenceRepository,
         roomInfoMapper = roomInfoMapper,
         initialRoomInfo = roomInfoMapper.map(roomInfo),
         sessionCoroutineScope = sessionCoroutineScope,

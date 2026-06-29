@@ -235,6 +235,7 @@ fun MessagesView(
                             isTombstoned = state.isTombstoned,
                             heroes = state.heroes,
                             dmUserIdentityState = state.dmUserVerificationState,
+                            dmUserPresence = state.dmUserPresence,
                             sharedHistoryIcon = state.topBarSharedHistoryIcon,
                             onBackClick = { hidingKeyboard { onBackClick() } },
                             onRoomDetailsClick = { hidingKeyboard { onRoomDetailsClick() } },

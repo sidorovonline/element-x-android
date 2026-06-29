@@ -11,10 +11,14 @@ package io.element.android.libraries.matrix.impl.room.member
 import io.element.android.libraries.matrix.api.core.UserId
 import io.element.android.libraries.matrix.api.room.RoomMember
 import io.element.android.libraries.matrix.api.room.RoomMembershipState
+import io.element.android.libraries.matrix.api.user.PresenceState
+import io.element.android.libraries.matrix.api.user.UserPresence
 import io.element.android.libraries.matrix.impl.room.powerlevels.into
 import uniffi.matrix_sdk.RoomMemberRole
 import org.matrix.rustcomponents.sdk.MembershipState as RustMembershipState
+import org.matrix.rustcomponents.sdk.PresenceState as RustPresenceState
 import org.matrix.rustcomponents.sdk.RoomMember as RustRoomMember
+import org.matrix.rustcomponents.sdk.UserPresence as RustUserPresence
 
 object RoomMemberMapper {
     fun map(roomMember: RustRoomMember): RoomMember {
@@ -30,6 +34,7 @@ object RoomMemberMapper {
             role = mapRole(roomMember.suggestedRoleForPowerLevel, powerLevel),
             membershipChangeReason = roomMember.membershipChangeReason,
             isServiceMember = roomMember.isServiceMember,
+            presence = roomMember.presence?.let(::mapPresence),
         )
     }
 
@@ -58,4 +63,21 @@ object RoomMemberMapper {
             RustMembershipState.Leave -> RoomMembershipState.LEAVE
             is RustMembershipState.Custom -> TODO()
         }
+
+    fun mapPresence(presence: RustUserPresence): UserPresence =
+        UserPresence(
+            state = when (presence.state) {
+                RustPresenceState.ONLINE -> PresenceState.ONLINE
+                RustPresenceState.OFFLINE -> PresenceState.OFFLINE
+                RustPresenceState.UNAVAILABLE -> PresenceState.UNAVAILABLE
+                RustPresenceState.BUSY -> PresenceState.BUSY
+            },
+            statusMessage = presence.statusMsg,
+            lastActiveAgo = presence.lastActiveAgo?.toLongOrLongMax(),
+            currentlyActive = presence.currentlyActive,
+        )
+
+    private fun ULong.toLongOrLongMax(): Long {
+        return if (this > Long.MAX_VALUE.toULong()) Long.MAX_VALUE else toLong()
+    }
 }

@@ -9,10 +9,12 @@
 package io.element.android.libraries.matrix.api.roomlist
 
 import io.element.android.libraries.matrix.api.room.RoomInfo
+import io.element.android.libraries.matrix.api.user.UserPresence
 
 data class RoomSummary(
     val info: RoomInfo,
     val latestEvent: LatestEventValue,
+    val directUserPresence: UserPresence? = null,
 ) {
     val roomId = info.id
     val latestEventTimestamp = when (latestEvent) {

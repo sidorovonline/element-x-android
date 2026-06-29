@@ -82,6 +82,7 @@ import io.element.android.libraries.matrix.impl.roomlist.roomOrNull
 import io.element.android.libraries.matrix.impl.spaces.RustSpaceService
 import io.element.android.libraries.matrix.impl.sync.RustSyncService
 import io.element.android.libraries.matrix.impl.sync.map
+import io.element.android.libraries.matrix.impl.user.RustUserPresenceRepository
 import io.element.android.libraries.matrix.impl.usersearch.UserSearchResultMapper
 import io.element.android.libraries.matrix.impl.util.cancelAndDestroy
 import io.element.android.libraries.matrix.impl.util.mxCallbackFlow
@@ -158,6 +159,11 @@ class RustMatrixClient(
     override val deviceId: DeviceId = DeviceId(innerClient.deviceId())
     override val sessionCoroutineScope = appCoroutineScope.childScope(dispatchers.main, "Session-$sessionId")
     private val sessionDispatcher = dispatchers.io.limitedParallelism(64)
+    private val userPresenceRepository = RustUserPresenceRepository(
+        client = innerClient,
+        coroutineScope = sessionCoroutineScope,
+        dispatcher = sessionDispatcher,
+    )
 
     private val innerRoomListService = innerSyncService.roomListService()
 
@@ -198,8 +204,10 @@ class RustMatrixClient(
         sessionCoroutineScope = sessionCoroutineScope,
         sessionDispatcher = sessionDispatcher,
         roomListFactory = RoomListFactory(
+            sessionId = sessionId,
             innerRoomListService = innerRoomListService,
             analyticsService = analyticsService,
+            userPresenceRepository = userPresenceRepository,
         ),
         roomSyncSubscriber = roomSyncSubscriber,
     )
@@ -243,6 +251,7 @@ class RustMatrixClient(
         timelineEventFilterFactory = timelineEventFilterFactory,
         roomMembershipObserver = roomMembershipObserver,
         roomInfoMapper = roomInfoMapper,
+        userPresenceRepository = userPresenceRepository,
         featureFlagService = featureFlagService,
         analyticsService = analyticsService,
     )

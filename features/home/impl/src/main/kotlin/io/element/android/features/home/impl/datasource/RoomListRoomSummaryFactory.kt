@@ -59,6 +59,7 @@ class RoomListRoomSummaryFactory(
             isFavorite = roomInfo.isFavorite,
             inviteSender = roomInfo.inviter?.toInviteSender(),
             isDm = roomInfo.isDm,
+            directUserPresence = roomSummary.directUserPresence,
             canonicalAlias = roomInfo.canonicalAlias,
             displayType = when (roomInfo.currentUserMembership) {
                 CurrentUserMembership.INVITED -> {

@@ -17,6 +17,7 @@ import io.element.android.libraries.matrix.test.A_ROOM_ID
 import io.element.android.libraries.matrix.test.A_ROOM_ID_2
 import io.element.android.libraries.matrix.test.A_ROOM_ID_3
 import io.element.android.libraries.matrix.test.A_ROOM_ID_4
+import io.element.android.libraries.matrix.test.A_SESSION_ID
 import io.element.android.libraries.matrix.test.room.aRoomSummary
 import io.element.android.services.analytics.test.FakeAnalyticsService
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -234,7 +235,7 @@ class RoomSummaryListProcessorTest {
         summaries,
         FakeFfiRoomListService(),
         coroutineContext = StandardTestDispatcher(testScheduler),
-        roomSummaryFactory = RoomSummaryFactory(),
+        roomSummaryFactory = RoomSummaryFactory(sessionId = A_SESSION_ID),
         analyticsService = analyticsService,
     )
 }
