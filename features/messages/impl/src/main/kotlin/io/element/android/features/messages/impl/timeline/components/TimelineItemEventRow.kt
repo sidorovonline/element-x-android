@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.constraintlayout.compose.ConstrainScope
 import androidx.constraintlayout.compose.ConstraintLayout
+import androidx.constraintlayout.compose.Dimension
 import io.element.android.compound.theme.ElementTheme
 import io.element.android.compound.tokens.generated.CompoundIcons
 import io.element.android.features.messages.impl.timeline.TimelineEvent
@@ -135,6 +136,7 @@ val NEGATIVE_MARGIN_FOR_BUBBLE = (-8).dp
 val SENDER_AVATAR_BORDER_WIDTH = 3.dp
 
 private val BUBBLE_INCOMING_OFFSET = 16.dp
+private val INCOMING_NO_BUBBLE_START_MARGIN = 4.dp
 
 @Composable
 fun TimelineItemEventRow(
@@ -434,6 +436,7 @@ private fun TimelineItemEventRowContent(
             reactions,
             pinIcon,
         ) = createRefs()
+        val isEventPinned = timelineRoomInfo.pinnedEventIds.contains(event.eventId)
 
         // Sender
         if (event.showSenderInformation && !timelineRoomInfo.isDm) {
@@ -462,7 +465,7 @@ private fun TimelineItemEventRowContent(
         MessageEventBubble(
             modifier = Modifier
                 .constrainAs(message) {
-                    val topMargin = if (bubbleState.cutTopStart) {
+                    val topMargin = if (event.isMine && bubbleState.cutTopStart) {
                         NEGATIVE_MARGIN_FOR_BUBBLE
                     } else {
                         0.dp
@@ -471,8 +474,14 @@ private fun TimelineItemEventRowContent(
                     if (event.isMine) {
                         end.linkTo(parent.end, margin = 16.dp)
                     } else {
-                        val startMargin = if (timelineRoomInfo.isDm) 16.dp else 16.dp + BUBBLE_INCOMING_OFFSET
-                        start.linkTo(parent.start, margin = startMargin)
+                        start.linkTo(parent.start, margin = INCOMING_NO_BUBBLE_START_MARGIN)
+                        if (isEventPinned) {
+                            end.linkTo(pinIcon.start, margin = 8.dp)
+                        } else {
+                            end.linkTo(parent.end, margin = 16.dp)
+                        }
+                        width = Dimension.fillToConstraints
+                        horizontalBias = 0f
                     }
                 },
             state = bubbleState,
@@ -492,7 +501,6 @@ private fun TimelineItemEventRowContent(
         }
 
         // Pin icon
-        val isEventPinned = timelineRoomInfo.pinnedEventIds.contains(event.eventId)
         if (isEventPinned) {
             Icon(
                 imageVector = CompoundIcons.PinSolid(),
@@ -506,7 +514,7 @@ private fun TimelineItemEventRowContent(
                         if (event.isMine) {
                             end.linkTo(message.start, margin = 8.dp)
                         } else {
-                            start.linkTo(message.end, margin = 8.dp)
+                            end.linkTo(parent.end, margin = 16.dp)
                         }
                     }
             )

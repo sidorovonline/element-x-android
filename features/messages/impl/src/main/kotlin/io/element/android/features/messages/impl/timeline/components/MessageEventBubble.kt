@@ -83,41 +83,47 @@ fun MessageEventBubble(
     val bubbleShape = remember(state) { MessageEventBubbleDefaults.shape(state.cutTopStart, state.groupPosition, state.isMine) }
     val radiusPx = (avatarRadius + SENDER_AVATAR_BORDER_WIDTH).toPx()
     val yOffsetPx = -(NEGATIVE_MARGIN_FOR_BUBBLE + avatarRadius).toPx()
-    BoxWithConstraints(
-        modifier = modifier
-            .drawWithCache {
-                // Calculate the outline of the background and cache it
-                val outline = bubbleShape.createOutline(size, layoutDirection, this)
+    val drawBubbleBackground = state.isMine
+    val bubbleBackgroundModifier = if (drawBubbleBackground) {
+        Modifier.drawWithCache {
+            // Calculate the outline of the background and cache it
+            val outline = bubbleShape.createOutline(size, layoutDirection, this)
 
-                onDrawWithContent {
-                    // Draw the contents in a layer to be able to clip them with the same outline
-                    // For some reason, doing this clipping outside a layer messes up with the touch events
-                    drawInLayer(
-                        composingStrategy = CompositingStrategy.Offscreen,
-                        outline = outline,
-                        clip = true,
-                    ) {
-                        // Draw the background first, so that it's behind the content
-                        drawRect(backgroundBubbleColor)
+            onDrawWithContent {
+                // Draw the contents in a layer to be able to clip them with the same outline
+                // For some reason, doing this clipping outside a layer messes up with the touch events
+                drawInLayer(
+                    composingStrategy = CompositingStrategy.Offscreen,
+                    outline = outline,
+                    clip = true,
+                ) {
+                    // Draw the background first, so that it's behind the content
+                    drawRect(backgroundBubbleColor)
 
-                        // Then draw the content on top of it
-                        drawContent()
+                    // Then draw the content on top of it
+                    drawContent()
 
-                        // And then clip the top start corner if needed to make room for the avatar
-                        if (cutTopStart) {
-                            drawCircle(
-                                color = Color.Black,
-                                center = Offset(
-                                    x = if (layoutDirection == LayoutDirection.Rtl) size.width else 0f,
-                                    y = yOffsetPx,
-                                ),
-                                radius = radiusPx,
-                                blendMode = BlendMode.Clear,
-                            )
-                        }
+                    // And then clip the top start corner if needed to make room for the avatar
+                    if (cutTopStart) {
+                        drawCircle(
+                            color = Color.Black,
+                            center = Offset(
+                                x = if (layoutDirection == LayoutDirection.Rtl) size.width else 0f,
+                                y = yOffsetPx,
+                            ),
+                            radius = radiusPx,
+                            blendMode = BlendMode.Clear,
+                        )
                     }
                 }
-            },
+            }
+        }
+    } else {
+        Modifier
+    }
+    BoxWithConstraints(
+        modifier = modifier
+            .then(bubbleBackgroundModifier),
         // Need to set the contentAlignment again (it's already set in TimelineItemEventRow), for the case
         // when content width is low.
         contentAlignment = if (state.isMine) Alignment.CenterEnd else Alignment.CenterStart
@@ -126,8 +132,8 @@ fun MessageEventBubble(
             modifier = Modifier
                 .testTag(TestTags.messageBubble)
                 .widthIn(
-                    min = MIN_BUBBLE_WIDTH,
-                    max = (constraints.maxWidth * MessageEventBubbleDefaults.BUBBLE_WIDTH_RATIO)
+                    min = if (state.isMine) MIN_BUBBLE_WIDTH else 0.dp,
+                    max = (constraints.maxWidth * MessageEventBubbleDefaults.maxWidthRatio(state.isMine))
                         .toInt()
                         .toDp()
                 )
@@ -177,6 +183,11 @@ object MessageEventBubbleDefaults {
 
     // Design says: The maximum width of a bubble is still 3/4 of the screen width. But try with 78% now.
     const val BUBBLE_WIDTH_RATIO = 0.78f
+    private const val INCOMING_CONTENT_WIDTH_RATIO = 1f
+
+    fun maxWidthRatio(isMine: Boolean): Float {
+        return if (isMine) BUBBLE_WIDTH_RATIO else INCOMING_CONTENT_WIDTH_RATIO
+    }
 }
 
 @PreviewsDayNight
