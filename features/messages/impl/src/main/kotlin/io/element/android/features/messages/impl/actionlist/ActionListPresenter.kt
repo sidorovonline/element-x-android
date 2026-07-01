@@ -225,6 +225,7 @@ class DefaultActionListPresenter(
             }
             if (timelineItem.content.canBeCopied()) {
                 add(TimelineItemAction.CopyText)
+                add(TimelineItemAction.SelectText)
             } else if ((timelineItem.content as? TimelineItemEventContentWithAttachment)?.caption.isNullOrBlank().not()) {
                 add(TimelineItemAction.CopyCaption)
             }

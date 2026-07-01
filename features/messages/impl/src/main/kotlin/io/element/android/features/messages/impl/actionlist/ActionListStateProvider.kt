@@ -206,6 +206,7 @@ fun aTimelineItemActionList(
         TimelineItemAction.Reply,
         TimelineItemAction.Forward,
         copyAction,
+        TimelineItemAction.SelectText.takeIf { copyAction == TimelineItemAction.CopyText },
         TimelineItemAction.CopyLink,
         TimelineItemAction.Edit,
         TimelineItemAction.Redact,

@@ -89,6 +89,7 @@ import io.element.android.features.messages.impl.timeline.components.receipt.bot
 import io.element.android.features.messages.impl.timeline.components.receipt.bottomsheet.ReadReceiptBottomSheetEvent
 import io.element.android.features.messages.impl.timeline.model.TimelineItem
 import io.element.android.features.messages.impl.timeline.model.TimelineItemGroupPosition
+import io.element.android.features.messages.impl.timeline.model.event.TimelineItemTextBasedContent
 import io.element.android.features.messages.impl.timeline.model.event.aTimelineItemStateEventContent
 import io.element.android.features.messages.impl.timeline.model.event.aTimelineItemTextContent
 import io.element.android.features.messages.impl.topbars.MessagesViewTopBar
@@ -361,6 +362,7 @@ fun MessagesView(
     )
 
     var endPollConfirmingEvent: TimelineItem.Event? by remember { mutableStateOf(null) }
+    var textSelectionContent: String? by remember { mutableStateOf(null) }
 
     if (endPollConfirmingEvent != null) {
         ConfirmationDialog(
@@ -380,6 +382,8 @@ fun MessagesView(
         onSelectAction = { action: TimelineItemAction, event: TimelineItem.Event ->
             if (action == TimelineItemAction.EndPoll) {
                 endPollConfirmingEvent = event
+            } else if (action == TimelineItemAction.SelectText) {
+                textSelectionContent = (event.content as? TimelineItemTextBasedContent)?.plainText
             } else {
                 onActionSelected(action, event)
             }
@@ -392,6 +396,13 @@ fun MessagesView(
             state.timelineState.eventSink(TimelineEvent.ComputeVerifiedUserSendFailure(event))
         },
     )
+
+    textSelectionContent?.let { content ->
+        MessageTextSelectionDialog(
+            text = content,
+            onDismiss = { textSelectionContent = null },
+        )
+    }
 
     CustomReactionBottomSheet(
         state = state.customReactionState,

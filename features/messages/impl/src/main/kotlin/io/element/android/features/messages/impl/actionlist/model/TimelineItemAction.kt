@@ -21,6 +21,7 @@ enum class TimelineItemAction(
     ViewInTimeline(CommonStrings.action_view_in_timeline, CompoundDrawables.ic_compound_visibility_on),
     Forward(CommonStrings.action_forward, CompoundDrawables.ic_compound_forward),
     CopyText(CommonStrings.action_copy_text, CompoundDrawables.ic_compound_copy),
+    SelectText(CommonStrings.action_select_text, CompoundDrawables.ic_compound_text_formatting),
     CopyCaption(CommonStrings.action_copy_caption, CompoundDrawables.ic_compound_copy),
     CopyLink(CommonStrings.action_copy_link_to_message, CompoundDrawables.ic_compound_link),
     Redact(CommonStrings.action_remove, CompoundDrawables.ic_compound_delete, destructive = true),

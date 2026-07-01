@@ -401,6 +401,41 @@ class MessagesViewTest : RobolectricTest() {
     }
 
     @Test
+    fun `selecting select text action opens text selection dialog`() = runAndroidComposeUiTest {
+        val eventsRecorder = EventsRecorder<MessagesEvent>(expectEvents = false)
+        val state = aMessagesState(
+            timelineState = aTimelineState(
+                timelineItems = aTimelineItemList(
+                    aTimelineItemTextContent(
+                        body = "Alpha bravo charlie delta echo",
+                    )
+                )
+            ),
+            eventSink = eventsRecorder
+        )
+        val timelineItem = state.timelineState.timelineItems.first() as TimelineItem.Event
+        val stateWithMessageAction = state.copy(
+            actionListState = anActionListState(
+                target = ActionListState.Target.Success(
+                    event = timelineItem,
+                    sentTimeFull = "",
+                    displayEmojiReactions = false,
+                    actions = persistentListOf(TimelineItemAction.SelectText),
+                    verifiedUserSendFailure = VerifiedUserSendFailure.None,
+                    recentEmojis = persistentListOf(),
+                )
+            ),
+        )
+        setMessagesView(
+            state = stateWithMessageAction,
+        )
+        clickOn(CommonStrings.action_select_text)
+        mainClock.advanceTimeBy(milliseconds = 1_000)
+        onNodeWithTag("message_text_selection_dialog").assertExists()
+        eventsRecorder.assertEmpty()
+    }
+
+    @Test
     fun `clicking on a reaction emits the expected Event`() = runAndroidComposeUiTest {
         val eventsRecorder = EventsRecorder<MessagesEvent>()
         val state = aMessagesState(

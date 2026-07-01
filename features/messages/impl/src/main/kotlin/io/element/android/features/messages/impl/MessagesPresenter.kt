@@ -431,6 +431,7 @@ class MessagesPresenter(
             TimelineItemAction.Pin -> handlePinAction(targetEvent)
             TimelineItemAction.Unpin -> handleUnpinAction(targetEvent)
             TimelineItemAction.ViewInTimeline -> Unit
+            TimelineItemAction.SelectText -> Unit
         }
     }
 
