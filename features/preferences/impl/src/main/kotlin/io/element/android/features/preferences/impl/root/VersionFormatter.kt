@@ -14,6 +14,8 @@ import io.element.android.libraries.core.meta.BuildMeta
 import io.element.android.libraries.ui.strings.CommonStrings
 import io.element.android.services.toolbox.api.strings.StringProvider
 
+private const val MYCLAW_BUILD_MARKER = "MyClaw build 2026-07-02.1"
+
 interface VersionFormatter {
     fun get(): String
 }
@@ -30,10 +32,10 @@ class DefaultVersionFormatter(
             buildMeta.versionCode.toString()
         )
         return if (buildMeta.gitBranchName == "main") {
-            base
+            "$base\n$MYCLAW_BUILD_MARKER"
         } else {
             // In case of a build not from main, we display the branch name and the revision
-            "$base\n${buildMeta.gitBranchName} (${buildMeta.gitRevision})"
+            "$base\n$MYCLAW_BUILD_MARKER\n${buildMeta.gitBranchName} (${buildMeta.gitRevision})"
         }
     }
 }

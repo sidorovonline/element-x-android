@@ -11,21 +11,16 @@ import androidx.compose.runtime.Immutable
 import io.element.android.libraries.matrix.api.core.RoomId
 
 @Immutable
-data class MyClawSessionStatus(
+data class MyClawRoomActivity(
     val roomId: RoomId,
     val sessionId: String,
-    val state: MyClawSessionStatusState,
-    val label: String,
+    val state: MyClawRoomActivityState,
+    val senderDisplayName: String,
     val updatedAtMillis: Long?,
     val expiresAtMillis: Long,
-) {
-    val isWaiting: Boolean
-        get() = state == MyClawSessionStatusState.WAITING_LLM || state == MyClawSessionStatusState.WAITING_AGENT
-}
+)
 
-enum class MyClawSessionStatusState {
-    IDLE,
-    RUNNING,
-    WAITING_LLM,
-    WAITING_AGENT,
+enum class MyClawRoomActivityState {
+    TYPING,
+    WORKING,
 }

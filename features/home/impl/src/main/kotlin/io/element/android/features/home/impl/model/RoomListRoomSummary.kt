@@ -13,7 +13,7 @@ import io.element.android.features.invite.api.InviteData
 import io.element.android.libraries.designsystem.components.avatar.AvatarData
 import io.element.android.libraries.matrix.api.core.RoomAlias
 import io.element.android.libraries.matrix.api.core.RoomId
-import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatus
+import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivity
 import io.element.android.libraries.matrix.api.notification.CallIntent
 import io.element.android.libraries.matrix.api.room.RoomNotificationMode
 import io.element.android.libraries.matrix.api.user.UserPresence
@@ -45,7 +45,7 @@ data class RoomListRoomSummary(
     val heroes: ImmutableList<AvatarData>,
     val isSpace: Boolean,
     val directUserPresence: UserPresence? = null,
-    val myClawSessionStatus: MyClawSessionStatus? = null,
+    val myClawRoomActivity: MyClawRoomActivity? = null,
 ) {
     val isHighlighted = userDefinedNotificationMode != RoomNotificationMode.MUTE &&
         (numberOfUnreadNotifications > 0 || numberOfUnreadMentions > 0) ||

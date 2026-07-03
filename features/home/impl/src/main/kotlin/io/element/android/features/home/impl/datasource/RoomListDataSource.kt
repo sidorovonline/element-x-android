@@ -18,7 +18,7 @@ import io.element.android.libraries.core.coroutine.CoroutineDispatchers
 import io.element.android.libraries.di.SessionScope
 import io.element.android.libraries.di.annotations.SessionCoroutineScope
 import io.element.android.libraries.matrix.api.core.RoomId
-import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatusService
+import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivityService
 import io.element.android.libraries.matrix.api.notificationsettings.NotificationSettingsService
 import io.element.android.libraries.matrix.api.roomlist.RoomList
 import io.element.android.libraries.matrix.api.roomlist.RoomListFilter
@@ -45,21 +45,20 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 private const val PAGE_SIZE = 20
 private const val EXTENDED_VISIBILITY_RANGE_SIZE = 40
 private const val SUBSCRIBE_TO_VISIBLE_ROOMS_DEBOUNCE_IN_MILLIS = 300L
 private const val PAGINATION_THRESHOLD = 3 * PAGE_SIZE
-private val MYCLAW_SESSION_STATUS_REFRESH_INTERVAL = 8.minutes
+private val MYCLAW_ROOM_ACTIVITY_REFRESH_INTERVAL = 8.seconds
 
 @Inject
 @SingleIn(SessionScope::class)
 class RoomListDataSource(
     private val roomListService: RoomListService,
     private val roomListRoomSummaryFactory: RoomListRoomSummaryFactory,
-    private val myClawSessionStatusService: MyClawSessionStatusService,
+    private val myClawRoomActivityService: MyClawRoomActivityService,
     private val coroutineDispatchers: CoroutineDispatchers,
     private val notificationSettingsService: NotificationSettingsService,
     @SessionCoroutineScope
@@ -70,7 +69,7 @@ class RoomListDataSource(
     init {
         observeNotificationSettings()
         observeDateTimeChanges()
-        observeMyClawSessionStatusChanges()
+        observeMyClawRoomActivityChanges()
     }
 
     private val roomList = roomListService.createRoomList(
@@ -99,6 +98,7 @@ class RoomListDataSource(
             .launchIn(coroutineScope)
             .also { job ->
                 job.invokeOnCompletion {
+                    myClawRoomActivityService.unsubscribeFromActivity(currentMyClawVisibleRoomIds)
                     currentMyClawVisibleRoomsRefreshJob?.cancel()
                     currentMyClawVisibleRoomIds = emptySet()
                 }
@@ -145,6 +145,7 @@ class RoomListDataSource(
 
     private fun refreshMyClawVisibleRooms(roomIds: Set<RoomId>) {
         if (roomIds == currentMyClawVisibleRoomIds) return
+        myClawRoomActivityService.unsubscribeFromActivity(currentMyClawVisibleRoomIds - roomIds)
         currentMyClawVisibleRoomIds = roomIds
         currentMyClawVisibleRoomsRefreshJob?.cancel()
         currentMyClawVisibleRoomsRefreshJob = null
@@ -152,9 +153,9 @@ class RoomListDataSource(
         currentMyClawVisibleRoomsRefreshJob = sessionCoroutineScope.launch {
             while (isActive) {
                 roomIds.forEach { roomId ->
-                    myClawSessionStatusService.requestStatus(roomId = roomId, subscribe = true)
+                    myClawRoomActivityService.requestActivity(roomId = roomId, subscribe = true)
                 }
-                delay(MYCLAW_SESSION_STATUS_REFRESH_INTERVAL)
+                delay(MYCLAW_ROOM_ACTIVITY_REFRESH_INTERVAL)
             }
         }
     }
@@ -180,8 +181,8 @@ class RoomListDataSource(
             .launchIn(sessionCoroutineScope)
     }
 
-    private fun observeMyClawSessionStatusChanges() {
-        myClawSessionStatusService.statuses
+    private fun observeMyClawRoomActivityChanges() {
+        myClawRoomActivityService.activities
             .drop(1)
             .onEach {
                 rebuildAllRoomSummaries()
@@ -251,7 +252,7 @@ class RoomListDataSource(
         val roomListSummary = roomSummaries.getOrNull(index)?.let {
             roomListRoomSummaryFactory.create(
                 roomSummary = it,
-                myClawSessionStatus = myClawSessionStatusService.statuses.value[it.roomId],
+                myClawRoomActivity = myClawRoomActivityService.activities.value[it.roomId],
             )
         }
         diffCache[index] = roomListSummary

@@ -20,6 +20,8 @@ import androidx.compose.runtime.setValue
 import dev.zacsweers.metro.Inject
 import io.element.android.libraries.architecture.Presenter
 import io.element.android.libraries.matrix.api.core.UserId
+import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivityService
+import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivityState
 import io.element.android.libraries.matrix.api.room.JoinedRoom
 import io.element.android.libraries.matrix.api.room.RoomMember
 import io.element.android.libraries.matrix.api.room.roomMembers
@@ -27,15 +29,19 @@ import io.element.android.libraries.preferences.api.store.SessionPreferencesStor
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.isActive
+import kotlin.time.Duration.Companion.seconds
 
 @Inject
 class TypingNotificationPresenter(
     private val room: JoinedRoom,
     private val sessionPreferencesStore: SessionPreferencesStore,
+    private val myClawRoomActivityService: MyClawRoomActivityService,
 ) : Presenter<TypingNotificationState> {
     @Composable
     override fun present(): TypingNotificationState {
@@ -49,18 +55,43 @@ class TypingNotificationPresenter(
                 value = persistentListOf<TypingRoomMember>()
             }
         }
+        val myClawRoomActivity by remember(room.roomId) {
+            myClawRoomActivityService.activityFlow(room.roomId)
+        }.collectAsState(initial = null)
+        val typingDisplayName = myClawRoomActivity
+            ?.takeIf { it.state == MyClawRoomActivityState.TYPING }
+            ?.senderDisplayName
+        val workingDisplayName = myClawRoomActivity
+            ?.takeIf { it.state == MyClawRoomActivityState.WORKING }
+            ?.senderDisplayName
+        val visibleTypingMembers = if (typingDisplayName != null || workingDisplayName != null) {
+            persistentListOf()
+        } else {
+            typingMembersState
+        }
+
+        LaunchedEffect(renderTypingNotifications, room.roomId) {
+            if (renderTypingNotifications) {
+                while (isActive) {
+                    myClawRoomActivityService.requestActivity(roomId = room.roomId, subscribe = true)
+                    delay(MYCLAW_ROOM_ACTIVITY_REFRESH_INTERVAL)
+                }
+            }
+        }
 
         // This will keep the space reserved for the typing notifications after the first one is displayed
         var reserveSpace by remember { mutableStateOf(false) }
-        LaunchedEffect(renderTypingNotifications, typingMembersState) {
-            if (renderTypingNotifications && typingMembersState.isNotEmpty()) {
+        LaunchedEffect(renderTypingNotifications, visibleTypingMembers, typingDisplayName, workingDisplayName) {
+            if (renderTypingNotifications && (visibleTypingMembers.isNotEmpty() || typingDisplayName != null || workingDisplayName != null)) {
                 reserveSpace = true
             }
         }
 
         return TypingNotificationState(
             renderTypingNotifications = renderTypingNotifications,
-            typingMembers = typingMembersState,
+            typingMembers = visibleTypingMembers,
+            typingDisplayName = typingDisplayName,
+            workingDisplayName = workingDisplayName,
             reserveSpace = reserveSpace,
         )
     }
@@ -82,6 +113,8 @@ class TypingNotificationPresenter(
             .launchIn(this)
     }
 }
+
+private val MYCLAW_ROOM_ACTIVITY_REFRESH_INTERVAL = 8.seconds
 
 private fun RoomMember.toTypingRoomMember(): TypingRoomMember {
     return TypingRoomMember(

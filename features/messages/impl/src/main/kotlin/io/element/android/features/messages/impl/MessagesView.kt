@@ -237,7 +237,6 @@ fun MessagesView(
                             heroes = state.heroes,
                             dmUserIdentityState = state.dmUserVerificationState,
                             dmUserPresence = state.dmUserPresence,
-                            myClawSessionStatus = state.myClawSessionStatus,
                             sharedHistoryIcon = state.topBarSharedHistoryIcon,
                             onBackClick = { hidingKeyboard { onBackClick() } },
                             onRoomDetailsClick = { hidingKeyboard { onRoomDetailsClick() } },

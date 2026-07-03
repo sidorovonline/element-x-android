@@ -9,12 +9,12 @@ package io.element.android.libraries.matrix.api.myclaw
 
 import io.element.android.libraries.matrix.api.core.SessionId
 import io.element.android.libraries.matrix.api.core.UserId
-import io.element.android.libraries.matrix.api.room.JoinedRoom
+import io.element.android.libraries.matrix.api.room.BaseRoom
 import io.element.android.libraries.matrix.api.room.joinedRoomMembers
 
 private const val DEFAULT_MAX_ROOM_CANDIDATES = 10
 
-suspend fun JoinedRoom.myClawCandidateUserIds(
+suspend fun BaseRoom.myClawCandidateUserIds(
     sessionId: SessionId,
     maxRoomCandidates: Int = DEFAULT_MAX_ROOM_CANDIDATES,
 ): List<UserId> {
@@ -41,7 +41,7 @@ suspend fun JoinedRoom.myClawCandidateUserIds(
     }
 }
 
-private suspend fun JoinedRoom.roomDirectCandidateUserId(sessionId: SessionId): UserId? {
+private suspend fun BaseRoom.roomDirectCandidateUserId(sessionId: SessionId): UserId? {
     return getDirectRoomMember()
         ?.takeUnless { it.isServiceMember }
         ?.userId

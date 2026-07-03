@@ -60,11 +60,12 @@ import io.element.android.libraries.designsystem.theme.roomListRoomMessage
 import io.element.android.libraries.designsystem.theme.roomListRoomMessageDate
 import io.element.android.libraries.designsystem.theme.roomListRoomName
 import io.element.android.libraries.designsystem.theme.unreadIndicator
+import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivity
+import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivityState
 import io.element.android.libraries.matrix.api.notification.CallIntent
 import io.element.android.libraries.matrix.api.room.RoomNotificationMode
 import io.element.android.libraries.matrix.ui.components.AvatarWithPresence
 import io.element.android.libraries.matrix.ui.components.InviteSenderView
-import io.element.android.libraries.matrix.ui.components.MyClawSessionStatusBadge
 import io.element.android.libraries.matrix.ui.model.InviteSender
 import io.element.android.libraries.ui.strings.CommonStrings
 import timber.log.Timber
@@ -194,25 +195,19 @@ private fun RoomSummaryScaffoldRow(
             .padding(horizontal = 16.dp, vertical = 11.dp)
             .height(IntrinsicSize.Min),
     ) {
-        Box {
-            AvatarWithPresence(
-                avatarData = room.avatarData,
-                avatarType = if (room.isSpace) {
-                    AvatarType.Space(isTombstoned = room.isTombstoned)
-                } else {
-                    AvatarType.Room(
-                        heroes = room.heroes,
-                        isTombstoned = room.isTombstoned,
-                    )
-                },
-                presence = room.directUserPresence.takeIf { room.isDirect || room.isDm },
-                hideImage = hideAvatarImage,
-            )
-            MyClawSessionStatusBadge(
-                status = room.myClawSessionStatus,
-                modifier = Modifier.align(Alignment.TopEnd),
-            )
-        }
+        AvatarWithPresence(
+            avatarData = room.avatarData,
+            avatarType = if (room.isSpace) {
+                AvatarType.Space(isTombstoned = room.isTombstoned)
+            } else {
+                AvatarType.Room(
+                    heroes = room.heroes,
+                    isTombstoned = room.isTombstoned,
+                )
+            },
+            presence = room.directUserPresence.takeIf { room.isDirect || room.isDm },
+            hideImage = hideAvatarImage,
+        )
         Spacer(modifier = Modifier.width(16.dp))
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -319,18 +314,16 @@ private fun MessagePreviewAndIndicatorRow(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-            } else {
-                if (room.latestEvent is LatestEvent.Sending) {
-                    Icon(
-                        modifier = Modifier
-                            .padding(top = 2.dp)
-                            .size(16.dp),
-                        imageVector = CompoundIcons.Time(),
-                        contentDescription = stringResource(CommonStrings.common_sending),
-                        tint = ElementTheme.colors.iconTertiary,
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                }
+            } else if (room.latestEvent is LatestEvent.Sending) {
+                Icon(
+                    modifier = Modifier
+                        .padding(top = 2.dp)
+                        .size(16.dp),
+                    imageVector = CompoundIcons.Time(),
+                    contentDescription = stringResource(CommonStrings.common_sending),
+                    tint = ElementTheme.colors.iconTertiary,
+                )
+                Spacer(modifier = Modifier.width(6.dp))
                 val messagePreview = room.latestEvent.content()
                 val annotatedMessagePreview = messagePreview as? AnnotatedString ?: AnnotatedString(text = messagePreview.orEmpty().toString())
                 Text(
@@ -344,6 +337,35 @@ private fun MessagePreviewAndIndicatorRow(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+            } else {
+                val activityPreview = room.myClawRoomActivity?.roomListPreview()
+                if (activityPreview != null) {
+                    Text(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clipToBounds(),
+                        text = activityPreview,
+                        color = ElementTheme.colors.roomListRoomMessage,
+                        style = ElementTheme.typography.fontBodyMdRegular,
+                        minLines = 2,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                } else {
+                    val messagePreview = room.latestEvent.content()
+                    val annotatedMessagePreview = messagePreview as? AnnotatedString ?: AnnotatedString(text = messagePreview.orEmpty().toString())
+                    Text(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clipToBounds(),
+                        text = annotatedMessagePreview,
+                        color = ElementTheme.colors.roomListRoomMessage,
+                        style = ElementTheme.typography.fontBodyMdRegular,
+                        minLines = 2,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
         Spacer(modifier = Modifier.width(16.dp))
@@ -386,6 +408,14 @@ private fun MessagePreviewAndIndicatorRow(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun MyClawRoomActivity.roomListPreview(): String {
+    return when (state) {
+        MyClawRoomActivityState.TYPING -> stringResource(CommonStrings.screen_roomlist_myclaw_typing, senderDisplayName)
+        MyClawRoomActivityState.WORKING -> stringResource(CommonStrings.screen_roomlist_myclaw_working, senderDisplayName)
     }
 }
 

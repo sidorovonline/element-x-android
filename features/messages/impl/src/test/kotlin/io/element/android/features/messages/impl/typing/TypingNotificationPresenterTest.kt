@@ -11,12 +11,15 @@ package io.element.android.features.messages.impl.typing
 import app.cash.turbine.Event
 import com.google.common.truth.Truth.assertThat
 import io.element.android.libraries.matrix.api.core.UserId
+import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivity
+import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivityState
 import io.element.android.libraries.matrix.api.room.JoinedRoom
 import io.element.android.libraries.matrix.api.room.RoomMembersState
 import io.element.android.libraries.matrix.test.A_USER_ID
 import io.element.android.libraries.matrix.test.A_USER_ID_2
 import io.element.android.libraries.matrix.test.A_USER_ID_3
 import io.element.android.libraries.matrix.test.A_USER_ID_4
+import io.element.android.libraries.matrix.test.myclaw.FakeMyClawRoomActivityService
 import io.element.android.libraries.matrix.test.room.FakeJoinedRoom
 import io.element.android.libraries.matrix.test.room.aRoomInfo
 import io.element.android.libraries.matrix.test.room.aRoomMember
@@ -42,6 +45,8 @@ class TypingNotificationPresenterTest {
             val initialState = awaitItem()
             assertThat(initialState.renderTypingNotifications).isTrue()
             assertThat(initialState.typingMembers).isEmpty()
+            assertThat(initialState.typingDisplayName).isNull()
+            assertThat(initialState.workingDisplayName).isNull()
             assertThat(initialState.reserveSpace).isFalse()
         }
     }
@@ -62,6 +67,8 @@ class TypingNotificationPresenterTest {
             val initialState = awaitItem()
             assertThat(initialState.renderTypingNotifications).isFalse()
             assertThat(initialState.typingMembers).isEmpty()
+            assertThat(initialState.typingDisplayName).isNull()
+            assertThat(initialState.workingDisplayName).isNull()
             typingMembersFlow.emit(listOf(A_USER_ID_2))
             expectNoEvents()
             // Preferences changes
@@ -81,6 +88,7 @@ class TypingNotificationPresenterTest {
             val finalState = awaitItem()
             assertThat(finalState.renderTypingNotifications).isFalse()
             assertThat(finalState.typingMembers).isEmpty()
+            assertThat(finalState.workingDisplayName).isNull()
         }
     }
 
@@ -92,6 +100,8 @@ class TypingNotificationPresenterTest {
         presenter.test {
             val initialState = awaitItem()
             assertThat(initialState.typingMembers).isEmpty()
+            assertThat(initialState.typingDisplayName).isNull()
+            assertThat(initialState.workingDisplayName).isNull()
             typingMembersFlow.emit(listOf(A_USER_ID_2))
             val oneMemberTypingState = awaitItem()
             assertThat(oneMemberTypingState.typingMembers.size).isEqualTo(1)
@@ -128,6 +138,8 @@ class TypingNotificationPresenterTest {
         presenter.test {
             val initialState = awaitItem()
             assertThat(initialState.typingMembers).isEmpty()
+            assertThat(initialState.typingDisplayName).isNull()
+            assertThat(initialState.workingDisplayName).isNull()
             typingMembersFlow.emit(listOf(A_USER_ID_2))
             val oneMemberTypingState = awaitItem()
             assertThat(oneMemberTypingState.typingMembers.size).isEqualTo(1)
@@ -153,6 +165,8 @@ class TypingNotificationPresenterTest {
         presenter.test {
             val initialState = awaitItem()
             assertThat(initialState.typingMembers).isEmpty()
+            assertThat(initialState.typingDisplayName).isNull()
+            assertThat(initialState.workingDisplayName).isNull()
             typingMembersFlow.emit(listOf(A_USER_ID_2))
             val oneMemberTypingState = awaitItem()
             assertThat(oneMemberTypingState.typingMembers.size).isEqualTo(1)
@@ -185,6 +199,8 @@ class TypingNotificationPresenterTest {
         presenter.test {
             val initialState = awaitItem()
             assertThat(initialState.typingMembers).isEmpty()
+            assertThat(initialState.typingDisplayName).isNull()
+            assertThat(initialState.workingDisplayName).isNull()
             typingMembersFlow.emit(listOf(A_USER_ID_2))
             skipItems(1)
             val updatedTypingState = awaitItem()
@@ -201,6 +217,140 @@ class TypingNotificationPresenterTest {
         }
     }
 
+    @Test
+    fun `present - MyClaw activity display names are exposed for typing and working activity`() = runTest {
+        val room = FakeJoinedRoom().apply {
+            givenRoomInfo(aRoomInfo(id = roomId, name = ""))
+        }
+        val myClawRoomActivityService = FakeMyClawRoomActivityService()
+        val presenter = createPresenter(
+            joinedRoom = room,
+            myClawRoomActivityService = myClawRoomActivityService,
+        )
+
+        presenter.test {
+            val initialState = awaitItem()
+            assertThat(initialState.typingDisplayName).isNull()
+            assertThat(initialState.workingDisplayName).isNull()
+
+            myClawRoomActivityService.givenActivity(
+                aMyClawRoomActivity(
+                    room = room,
+                    state = MyClawRoomActivityState.TYPING,
+                )
+            )
+            val typingActivityState = awaitItem()
+            assertThat(typingActivityState.typingDisplayName).isEqualTo("Spark")
+            assertThat(typingActivityState.workingDisplayName).isNull()
+
+            myClawRoomActivityService.givenActivity(
+                aMyClawRoomActivity(
+                    room = room,
+                    state = MyClawRoomActivityState.WORKING,
+                )
+            )
+            var workingState = awaitItem()
+            while (workingState.workingDisplayName == null) {
+                workingState = awaitItem()
+            }
+            assertThat(workingState.typingDisplayName).isNull()
+            assertThat(workingState.workingDisplayName).isEqualTo("Spark")
+            if (workingState.reserveSpace) {
+                assertThat(workingState.reserveSpace).isTrue()
+            } else {
+                assertThat(awaitItem().reserveSpace).isTrue()
+            }
+        }
+    }
+
+    @Test
+    fun `present - working activity suppresses native typing members`() = runTest {
+        val typingMembersFlow = MutableStateFlow<List<UserId>>(emptyList())
+        val room = FakeJoinedRoom(roomTypingMembersFlow = typingMembersFlow).apply {
+            givenRoomInfo(aRoomInfo(id = roomId, name = ""))
+        }
+        val myClawRoomActivityService = FakeMyClawRoomActivityService()
+        val presenter = createPresenter(
+            joinedRoom = room,
+            myClawRoomActivityService = myClawRoomActivityService,
+        )
+
+        presenter.test {
+            val initialState = awaitItem()
+            assertThat(initialState.typingMembers).isEmpty()
+            assertThat(initialState.typingDisplayName).isNull()
+            assertThat(initialState.workingDisplayName).isNull()
+
+            typingMembersFlow.emit(listOf(A_USER_ID_2))
+            var typingState = awaitItem()
+            while (typingState.typingMembers.isEmpty()) {
+                typingState = awaitItem()
+            }
+            assertThat(typingState.typingMembers).isNotEmpty()
+            assertThat(typingState.typingDisplayName).isNull()
+            assertThat(typingState.workingDisplayName).isNull()
+
+            myClawRoomActivityService.givenActivity(
+                aMyClawRoomActivity(
+                    room = room,
+                    state = MyClawRoomActivityState.WORKING,
+                )
+            )
+            var workingState = awaitItem()
+            while (workingState.workingDisplayName == null) {
+                workingState = awaitItem()
+            }
+            assertThat(workingState.typingDisplayName).isNull()
+            assertThat(workingState.workingDisplayName).isEqualTo("Spark")
+            assertThat(workingState.typingMembers).isEmpty()
+        }
+    }
+
+    @Test
+    fun `present - MyClaw typing after working suppresses native typing members`() = runTest {
+        val typingMembersFlow = MutableStateFlow<List<UserId>>(emptyList())
+        val room = FakeJoinedRoom(roomTypingMembersFlow = typingMembersFlow).apply {
+            givenRoomInfo(aRoomInfo(id = roomId, name = ""))
+        }
+        val myClawRoomActivityService = FakeMyClawRoomActivityService()
+        val presenter = createPresenter(
+            joinedRoom = room,
+            myClawRoomActivityService = myClawRoomActivityService,
+        )
+
+        presenter.test {
+            skipItems(1)
+            typingMembersFlow.emit(listOf(A_USER_ID_2))
+            myClawRoomActivityService.givenActivity(
+                aMyClawRoomActivity(
+                    room = room,
+                    state = MyClawRoomActivityState.WORKING,
+                )
+            )
+            var workingState = awaitItem()
+            while (workingState.workingDisplayName == null) {
+                workingState = awaitItem()
+            }
+            assertThat(workingState.typingDisplayName).isNull()
+            assertThat(workingState.workingDisplayName).isEqualTo("Spark")
+            assertThat(workingState.typingMembers).isEmpty()
+
+            myClawRoomActivityService.givenActivity(
+                aMyClawRoomActivity(
+                    room = room,
+                    state = MyClawRoomActivityState.TYPING,
+                )
+            )
+            var myClawTypingState = awaitItem()
+            while (myClawTypingState.typingDisplayName == null) {
+                myClawTypingState = awaitItem()
+            }
+            assertThat(myClawTypingState.typingDisplayName).isEqualTo("Spark")
+            assertThat(myClawTypingState.workingDisplayName).isNull()
+            assertThat(myClawTypingState.typingMembers).isEmpty()
+        }
+    }
+
     private fun createPresenter(
         joinedRoom: JoinedRoom = FakeJoinedRoom().apply {
             givenRoomInfo(aRoomInfo(id = roomId, name = ""))
@@ -208,9 +358,11 @@ class TypingNotificationPresenterTest {
         sessionPreferencesStore: SessionPreferencesStore = InMemorySessionPreferencesStore(
             isRenderTypingNotificationsEnabled = true
         ),
+        myClawRoomActivityService: FakeMyClawRoomActivityService = FakeMyClawRoomActivityService(),
     ) = TypingNotificationPresenter(
         room = joinedRoom,
         sessionPreferencesStore = sessionPreferencesStore,
+        myClawRoomActivityService = myClawRoomActivityService,
     )
 
     private fun createKnownRoomMember(
@@ -219,5 +371,17 @@ class TypingNotificationPresenterTest {
         userId = userId,
         displayName = "Alice Doe",
         isNameAmbiguous = true,
+    )
+
+    private fun aMyClawRoomActivity(
+        room: JoinedRoom,
+        state: MyClawRoomActivityState,
+    ) = MyClawRoomActivity(
+        roomId = room.roomId,
+        sessionId = "sess_123",
+        state = state,
+        senderDisplayName = "Spark",
+        updatedAtMillis = null,
+        expiresAtMillis = Long.MAX_VALUE,
     )
 }

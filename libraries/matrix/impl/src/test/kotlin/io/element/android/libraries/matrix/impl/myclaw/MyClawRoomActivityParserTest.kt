@@ -9,21 +9,21 @@ package io.element.android.libraries.matrix.impl.myclaw
 
 import com.google.common.truth.Truth.assertThat
 import io.element.android.libraries.matrix.api.core.RoomId
-import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatusState
+import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivityState
 import org.junit.Test
 
-class MyClawSessionStatusParserTest {
+class MyClawRoomActivityParserTest {
     @Test
-    fun `parse returns waiting status`() {
-        val result = MyClawSessionStatusParser.parse(
+    fun `parse returns working activity`() {
+        val result = MyClawRoomActivityParser.parse(
             content = """
                 {
                   "version": 1,
                   "txn_id": "txn",
                   "room_id": "!room:server",
                   "session_id": "sess_123",
-                  "state": "waiting_agent",
-                  "label": "Waiting for agent",
+                  "state": "working",
+                  "sender_display_name": "Spark",
                   "updated_at": "2026-06-29T12:00:00Z",
                   "expires_at": "2026-06-29T12:05:00Z"
                 }
@@ -31,14 +31,15 @@ class MyClawSessionStatusParserTest {
         )
 
         assertThat(result?.txnId).isEqualTo("txn")
-        assertThat(result?.status?.roomId).isEqualTo(RoomId("!room:server"))
-        assertThat(result?.status?.state).isEqualTo(MyClawSessionStatusState.WAITING_AGENT)
-        assertThat(result?.status?.label).isEqualTo("Waiting for agent")
+        assertThat(result?.roomId).isEqualTo(RoomId("!room:server"))
+        assertThat(result?.activity?.roomId).isEqualTo(RoomId("!room:server"))
+        assertThat(result?.activity?.state).isEqualTo(MyClawRoomActivityState.WORKING)
+        assertThat(result?.activity?.senderDisplayName).isEqualTo("Spark")
     }
 
     @Test
-    fun `parse returns idle status without expiry`() {
-        val result = MyClawSessionStatusParser.parse(
+    fun `parse returns idle clear without activity`() {
+        val result = MyClawRoomActivityParser.parse(
             content = """
                 {
                   "version": 1,
@@ -50,19 +51,19 @@ class MyClawSessionStatusParserTest {
             """.trimIndent()
         )
 
-        assertThat(result?.status?.roomId).isEqualTo(RoomId("!room:server"))
-        assertThat(result?.status?.state).isEqualTo(MyClawSessionStatusState.IDLE)
+        assertThat(result?.roomId).isEqualTo(RoomId("!room:server"))
+        assertThat(result?.activity).isNull()
     }
 
     @Test
-    fun `parse rejects waiting status without expiry`() {
-        val result = MyClawSessionStatusParser.parse(
+    fun `parse rejects active activity without expiry`() {
+        val result = MyClawRoomActivityParser.parse(
             content = """
                 {
                   "version": 1,
                   "room_id": "!room:server",
                   "session_id": "sess_123",
-                  "state": "waiting_llm",
+                  "state": "typing",
                   "updated_at": "2026-06-29T12:00:00Z"
                 }
             """.trimIndent()
@@ -73,13 +74,30 @@ class MyClawSessionStatusParserTest {
 
     @Test
     fun `parse rejects invalid state`() {
-        val result = MyClawSessionStatusParser.parse(
+        val result = MyClawRoomActivityParser.parse(
             content = """
                 {
                   "version": 1,
                   "room_id": "!room:server",
                   "session_id": "sess_123",
-                  "state": "blocked",
+                  "state": "running",
+                  "expires_at": "2026-06-29T12:05:00Z"
+                }
+            """.trimIndent()
+        )
+
+        assertThat(result).isNull()
+    }
+
+    @Test
+    fun `parse rejects unsupported version`() {
+        val result = MyClawRoomActivityParser.parse(
+            content = """
+                {
+                  "version": 2,
+                  "room_id": "!room:server",
+                  "session_id": "sess_123",
+                  "state": "working",
                   "expires_at": "2026-06-29T12:05:00Z"
                 }
             """.trimIndent()

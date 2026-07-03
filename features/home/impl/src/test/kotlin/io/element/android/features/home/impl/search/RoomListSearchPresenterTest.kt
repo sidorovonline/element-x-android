@@ -14,7 +14,7 @@ import io.element.android.libraries.dateformatter.test.FakeDateFormatter
 import io.element.android.libraries.eventformatter.test.FakeRoomLatestEventFormatter
 import io.element.android.libraries.matrix.api.roomlist.RoomListFilter
 import io.element.android.libraries.matrix.api.roomlist.RoomListService
-import io.element.android.libraries.matrix.test.myclaw.FakeMyClawSessionStatusService
+import io.element.android.libraries.matrix.test.myclaw.FakeMyClawRoomActivityService
 import io.element.android.libraries.matrix.test.room.aRoomSummary
 import io.element.android.libraries.matrix.test.roomlist.FakeDynamicRoomList
 import io.element.android.libraries.matrix.test.roomlist.FakeRoomListService
@@ -155,7 +155,7 @@ fun TestScope.createRoomListSearchPresenter(
                         dateFormatter = FakeDateFormatter(),
                         roomLatestEventFormatter = FakeRoomLatestEventFormatter(),
                     ),
-                    myClawSessionStatusService = FakeMyClawSessionStatusService(),
+                    myClawRoomActivityService = FakeMyClawRoomActivityService(),
                     coroutineDispatchers = testCoroutineDispatchers(),
                     coroutineScope = coroutineScope,
                 )

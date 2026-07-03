@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
   <string name="action_select_text">"Select text"</string>
+  <string name="screen_roomlist_myclaw_typing">%1$s typing...</string>
+  <string name="screen_roomlist_myclaw_working">%1$s working...</string>
+  <string name="screen_room_myclaw_typing">%1$s typing...</string>
+  <string name="screen_room_myclaw_working">%1$s working...</string>
 </resources>

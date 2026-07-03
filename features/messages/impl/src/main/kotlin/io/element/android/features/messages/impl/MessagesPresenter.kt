@@ -10,7 +10,6 @@ package io.element.android.features.messages.impl
 
 import android.os.Build
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
@@ -72,11 +71,9 @@ import io.element.android.libraries.designsystem.utils.snackbar.collectSnackbarM
 import io.element.android.libraries.di.annotations.SessionCoroutineScope
 import io.element.android.libraries.featureflag.api.FeatureFlagService
 import io.element.android.libraries.featureflag.api.FeatureFlags
-import io.element.android.libraries.matrix.api.core.RoomId
 import io.element.android.libraries.matrix.api.core.toThreadId
 import io.element.android.libraries.matrix.api.encryption.EncryptionService
 import io.element.android.libraries.matrix.api.encryption.identity.IdentityState
-import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatusService
 import io.element.android.libraries.matrix.api.permalink.PermalinkParser
 import io.element.android.libraries.matrix.api.room.JoinedRoom
 import io.element.android.libraries.matrix.api.room.RoomInfo
@@ -95,18 +92,12 @@ import io.element.android.services.analytics.api.AnalyticsService
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.onStart
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.minutes
 
 @AssistedInject
 class MessagesPresenter(
@@ -138,7 +129,6 @@ class MessagesPresenter(
     private val addRecentEmoji: AddRecentEmoji,
     private val markAsFullyRead: MarkAsFullyRead,
     private val liveLocationShareManager: ActiveLiveLocationShareManager,
-    private val myClawSessionStatusService: MyClawSessionStatusService,
     @SessionCoroutineScope private val sessionCoroutineScope: CoroutineScope,
 ) : Presenter<MessagesState> {
     @AssistedFactory
@@ -186,27 +176,6 @@ class MessagesPresenter(
 
         val canOpenThreadList by featureFlagService.isFeatureEnabledFlow(FeatureFlags.RoomThreadList).collectAsState(initial = false)
         val isCurrentlySharingLiveLocationInRoom by remember { liveLocationShareManager.isCurrentlySharing(room.roomId) }.collectAsState()
-        val myClawSessionStatus by remember(room.roomId) {
-            myClawSessionStatusService.statusFlow(room.roomId)
-        }.collectAsState(initial = null)
-
-        LaunchedEffect(room.roomId) {
-            myClawSessionStatusService.requestStatus(roomId = room.roomId, subscribe = true)
-        }
-
-        DisposableEffect(room.roomId) {
-            val refreshJob = sessionCoroutineScope.launch(Dispatchers.Default) {
-                launchMyClawSessionStatusRefreshLoop(
-                    roomId = room.roomId,
-                    myClawSessionStatusService = myClawSessionStatusService,
-                    refreshInterval = MYCLAW_SESSION_STATUS_REFRESH_INTERVAL,
-                    initialDelay = MYCLAW_SESSION_STATUS_REFRESH_INTERVAL,
-                ).join()
-            }
-            onDispose {
-                refreshJob.cancel()
-            }
-        }
 
         val userEventPermissions by room.permissionsAsState(UserEventPermissions.DEFAULT) { perms ->
             perms.userEventPermissions()
@@ -351,7 +320,6 @@ class MessagesPresenter(
             pinnedMessagesBannerState = pinnedMessagesBannerState,
             dmUserVerificationState = dmUserVerificationState,
             dmUserPresence = dmRoomMember?.presence,
-            myClawSessionStatus = myClawSessionStatus,
             roomMemberModerationState = roomMemberModerationState,
             topBarSharedHistoryIcon = topBarSharedHistoryIcon,
             successorRoom = roomInfo.successorRoom,
@@ -647,18 +615,3 @@ class MessagesPresenter(
         }
     }
 }
-
-internal fun CoroutineScope.launchMyClawSessionStatusRefreshLoop(
-    roomId: RoomId,
-    myClawSessionStatusService: MyClawSessionStatusService,
-    refreshInterval: Duration = MYCLAW_SESSION_STATUS_REFRESH_INTERVAL,
-    initialDelay: Duration = Duration.ZERO,
-): Job = launch {
-    delay(initialDelay)
-    while (isActive) {
-        myClawSessionStatusService.requestStatus(roomId = roomId, subscribe = true)
-        delay(refreshInterval)
-    }
-}
-
-private val MYCLAW_SESSION_STATUS_REFRESH_INTERVAL = 8.minutes

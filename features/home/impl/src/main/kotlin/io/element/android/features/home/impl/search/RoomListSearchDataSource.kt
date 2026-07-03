@@ -14,11 +14,11 @@ import dev.zacsweers.metro.AssistedInject
 import io.element.android.features.home.impl.datasource.RoomListRoomSummaryFactory
 import io.element.android.features.home.impl.model.RoomListRoomSummary
 import io.element.android.libraries.core.coroutine.CoroutineDispatchers
+import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivityService
 import io.element.android.libraries.matrix.api.roomlist.RoomList
 import io.element.android.libraries.matrix.api.roomlist.RoomListFilter
 import io.element.android.libraries.matrix.api.roomlist.RoomListService
 import io.element.android.libraries.matrix.api.roomlist.updateVisibleRange
-import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatusService
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.CoroutineScope
@@ -35,7 +35,7 @@ class RoomListSearchDataSource(
     roomListService: RoomListService,
     coroutineDispatchers: CoroutineDispatchers,
     private val roomSummaryFactory: RoomListRoomSummaryFactory,
-    private val myClawSessionStatusService: MyClawSessionStatusService,
+    private val myClawRoomActivityService: MyClawRoomActivityService,
 ) {
     @AssistedFactory
     interface Factory {
@@ -49,12 +49,12 @@ class RoomListSearchDataSource(
     )
 
     val roomSummaries: Flow<ImmutableList<RoomListRoomSummary>> = roomList.summaries
-        .combine(myClawSessionStatusService.statuses) { roomSummaries, statuses ->
+        .combine(myClawRoomActivityService.activities) { roomSummaries, activities ->
             roomSummaries
                 .map { roomSummary ->
                     roomSummaryFactory.create(
                         roomSummary = roomSummary,
-                        myClawSessionStatus = statuses[roomSummary.roomId],
+                        myClawRoomActivity = activities[roomSummary.roomId],
                     )
                 }
                 .toImmutableList()

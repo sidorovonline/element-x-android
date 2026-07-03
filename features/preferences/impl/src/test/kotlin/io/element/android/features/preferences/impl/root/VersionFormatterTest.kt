@@ -25,7 +25,7 @@ class VersionFormatterTest {
                 versionCode = 123
             )
         )
-        assertThat(sut.get()).isEqualTo("${VERSION}versionName, 123")
+        assertThat(sut.get()).isEqualTo("${VERSION}versionName, 123\n$MYCLAW_BUILD_MARKER")
     }
 
     @Test
@@ -39,10 +39,11 @@ class VersionFormatterTest {
                 gitRevision = "1234567890",
             )
         )
-        assertThat(sut.get()).isEqualTo("${VERSION}versionName, 123\nbranch (1234567890)")
+        assertThat(sut.get()).isEqualTo("${VERSION}versionName, 123\n$MYCLAW_BUILD_MARKER\nbranch (1234567890)")
     }
 
     companion object {
         const val VERSION = "version"
+        const val MYCLAW_BUILD_MARKER = "MyClaw build 2026-07-02.1"
     }
 }

@@ -11,10 +11,12 @@ import io.element.android.libraries.matrix.api.core.RoomId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 
-interface MyClawSessionStatusService {
-    val statuses: StateFlow<Map<RoomId, MyClawSessionStatus>>
+interface MyClawRoomActivityService {
+    val activities: StateFlow<Map<RoomId, MyClawRoomActivity>>
 
-    fun statusFlow(roomId: RoomId): Flow<MyClawSessionStatus?>
+    fun activityFlow(roomId: RoomId): Flow<MyClawRoomActivity?>
 
-    suspend fun requestStatus(roomId: RoomId, subscribe: Boolean = true)
+    suspend fun requestActivity(roomId: RoomId, subscribe: Boolean = true)
+
+    fun unsubscribeFromActivity(roomIds: Set<RoomId>)
 }

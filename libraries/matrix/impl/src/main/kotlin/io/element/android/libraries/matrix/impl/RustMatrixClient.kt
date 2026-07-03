@@ -31,7 +31,7 @@ import io.element.android.libraries.matrix.api.createroom.RoomPreset
 import io.element.android.libraries.matrix.api.linknewdevice.LinkDesktopHandler
 import io.element.android.libraries.matrix.api.linknewdevice.LinkMobileHandler
 import io.element.android.libraries.matrix.api.media.MatrixMediaLoader
-import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatusService
+import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivityService
 import io.element.android.libraries.matrix.api.oauth.AccountManagementAction
 import io.element.android.libraries.matrix.api.paths.SessionPaths
 import io.element.android.libraries.matrix.api.room.BaseRoom
@@ -60,7 +60,7 @@ import io.element.android.libraries.matrix.impl.linknewdevice.RustQrCodeDataPars
 import io.element.android.libraries.matrix.impl.mapper.map
 import io.element.android.libraries.matrix.impl.media.RustMediaLoader
 import io.element.android.libraries.matrix.impl.media.RustMediaPreviewService
-import io.element.android.libraries.matrix.impl.myclaw.RustMyClawSessionStatusService
+import io.element.android.libraries.matrix.impl.myclaw.RustMyClawRoomActivityService
 import io.element.android.libraries.matrix.impl.notification.RustNotificationService
 import io.element.android.libraries.matrix.impl.notificationsettings.RustNotificationSettingsService
 import io.element.android.libraries.matrix.impl.oauth.toRustAction
@@ -258,13 +258,13 @@ class RustMatrixClient(
         analyticsService = analyticsService,
     )
 
-    override val myClawSessionStatusService: MyClawSessionStatusService = RustMyClawSessionStatusService(
+    override val myClawRoomActivityService: MyClawRoomActivityService = RustMyClawRoomActivityService(
         sessionId = sessionId,
         deviceId = deviceId,
         coroutineScope = sessionCoroutineScope,
         dispatcher = sessionDispatcher,
         clock = clock,
-        getJoinedRoom = ::getJoinedRoom,
+        getRoom = ::getRoom,
         sendCustomToDevice = ::sendCustomToDevice,
         customToDeviceEvents = ::customToDeviceEvents,
     )

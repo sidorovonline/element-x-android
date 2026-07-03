@@ -13,20 +13,20 @@ import io.element.android.libraries.dateformatter.api.DateFormatter
 import io.element.android.libraries.dateformatter.test.FakeDateFormatter
 import io.element.android.libraries.eventformatter.api.RoomLatestEventFormatter
 import io.element.android.libraries.eventformatter.test.FakeRoomLatestEventFormatter
-import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatusState
+import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivityState
 import io.element.android.libraries.matrix.test.room.aRoomSummary
 import org.junit.Test
 
 class RoomListRoomSummaryFactoryTest {
     @Test
-    fun `create includes MyClaw session status`() {
-        val status = io.element.android.features.home.impl.model.aMyClawSessionStatus(state = MyClawSessionStatusState.WAITING_AGENT)
+    fun `create includes MyClaw room activity`() {
+        val activity = io.element.android.features.home.impl.model.aMyClawRoomActivity(state = MyClawRoomActivityState.WORKING)
         val result = aRoomListRoomSummaryFactory().create(
-            roomSummary = aRoomSummary(roomId = status.roomId),
-            myClawSessionStatus = status,
+            roomSummary = aRoomSummary(roomId = activity.roomId),
+            myClawRoomActivity = activity,
         )
 
-        assertThat(result.myClawSessionStatus).isEqualTo(status)
+        assertThat(result.myClawRoomActivity).isEqualTo(activity)
     }
 }
 

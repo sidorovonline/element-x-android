@@ -54,7 +54,7 @@ import io.element.android.libraries.matrix.test.A_ROOM_ID_3
 import io.element.android.libraries.matrix.test.A_SESSION_ID
 import io.element.android.libraries.matrix.test.FakeMatrixClient
 import io.element.android.libraries.matrix.test.encryption.FakeEncryptionService
-import io.element.android.libraries.matrix.test.myclaw.FakeMyClawSessionStatusService
+import io.element.android.libraries.matrix.test.myclaw.FakeMyClawRoomActivityService
 import io.element.android.libraries.matrix.test.notificationsettings.FakeNotificationSettingsService
 import io.element.android.libraries.matrix.test.room.FakeBaseRoom
 import io.element.android.libraries.matrix.test.room.aRoomInfo
@@ -682,7 +682,7 @@ class RoomListPresenterTest {
                 dateFormatter = dateFormatter,
                 roomLatestEventFormatter = roomLatestEventFormatter,
             ),
-            myClawSessionStatusService = FakeMyClawSessionStatusService(),
+            myClawRoomActivityService = FakeMyClawRoomActivityService(),
             coroutineDispatchers = testCoroutineDispatchers(),
             notificationSettingsService = client.notificationSettingsService,
             sessionCoroutineScope = backgroundScope,

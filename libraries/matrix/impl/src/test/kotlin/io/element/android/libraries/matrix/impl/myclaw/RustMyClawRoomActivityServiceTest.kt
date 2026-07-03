@@ -10,23 +10,21 @@ package io.element.android.libraries.matrix.impl.myclaw
 import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
 import io.element.android.libraries.matrix.api.core.DeviceId
-import io.element.android.libraries.matrix.api.core.RoomId
 import io.element.android.libraries.matrix.api.core.UserId
-import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatusState
-import io.element.android.libraries.matrix.api.room.JoinedRoom
+import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivityState
+import io.element.android.libraries.matrix.api.room.BaseRoom
 import io.element.android.libraries.matrix.api.to_device.CustomToDeviceEvent
 import io.element.android.libraries.matrix.test.A_DEVICE_ID
 import io.element.android.libraries.matrix.test.A_ROOM_ID
 import io.element.android.libraries.matrix.test.A_SESSION_ID
 import io.element.android.libraries.matrix.test.room.FakeBaseRoom
-import io.element.android.libraries.matrix.test.room.FakeJoinedRoom
 import io.element.android.libraries.matrix.test.room.aRoomInfo
 import io.element.android.libraries.matrix.test.room.aRoomMember
 import io.element.android.services.toolbox.test.systemclock.FakeSystemClock
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -39,17 +37,17 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class RustMyClawSessionStatusServiceTest {
+class RustMyClawRoomActivityServiceTest {
     @Test
-    fun `requestStatus sends subscribe request to MyClaw candidate`() = runTest {
+    fun `requestActivity sends subscribe request to MyClaw candidate`() = runTest {
         val sentEvents = mutableListOf<SentCustomToDevice>()
         val service = createService(sentEvents = sentEvents)
 
-        service.requestStatus(A_ROOM_ID)
+        service.requestActivity(A_ROOM_ID)
 
         assertThat(sentEvents).hasSize(1)
         val sent = sentEvents.single()
-        assertThat(sent.eventType).isEqualTo(RustMyClawSessionStatusService.REQUEST_TYPE)
+        assertThat(sent.eventType).isEqualTo(RustMyClawRoomActivityService.REQUEST_TYPE)
         assertThat(sent.userId).isEqualTo(A_BOT_USER_ID)
         val content = Json.parseToJsonElement(sent.content).jsonObject
         assertThat(content["room_id"]?.jsonPrimitive?.contentOrNull).isEqualTo(A_ROOM_ID.value)
@@ -59,7 +57,7 @@ class RustMyClawSessionStatusServiceTest {
     }
 
     @Test
-    fun `response updates status only when txn matches pending request`() = runTest {
+    fun `response updates activity only when txn matches pending request`() = runTest {
         val toDeviceEvents = MutableSharedFlow<CustomToDeviceEvent>(extraBufferCapacity = 10)
         val sentEvents = mutableListOf<SentCustomToDevice>()
         val service = createService(
@@ -68,30 +66,30 @@ class RustMyClawSessionStatusServiceTest {
         )
         runCurrent()
 
-        service.requestStatus(A_ROOM_ID)
+        service.requestActivity(A_ROOM_ID)
         val txnId = sentEvents.single().txnId.orEmpty()
         toDeviceEvents.emit(
             aCustomToDeviceEvent(
-                eventType = RustMyClawSessionStatusService.RESPONSE_TYPE,
-                content = responseContent(txnId = "wrong-txn", state = "waiting_llm"),
+                eventType = RustMyClawRoomActivityService.RESPONSE_TYPE,
+                content = responseContent(txnId = "wrong-txn", state = "typing"),
             )
         )
         runCurrent()
-        assertThat(service.statuses.value[A_ROOM_ID]).isNull()
+        assertThat(service.activities.value[A_ROOM_ID]).isNull()
 
         toDeviceEvents.emit(
             aCustomToDeviceEvent(
-                eventType = RustMyClawSessionStatusService.RESPONSE_TYPE,
-                content = responseContent(txnId = txnId, state = "waiting_llm"),
+                eventType = RustMyClawRoomActivityService.RESPONSE_TYPE,
+                content = responseContent(txnId = txnId, state = "typing"),
             )
         )
         runCurrent()
 
-        assertThat(service.statuses.value[A_ROOM_ID]?.state).isEqualTo(MyClawSessionStatusState.WAITING_LLM)
+        assertThat(service.activities.value[A_ROOM_ID]?.state).isEqualTo(MyClawRoomActivityState.TYPING)
     }
 
     @Test
-    fun `update changes status and expiry clears it`() = runTest {
+    fun `update changes activity and expiry clears it`() = runTest {
         val clock = FakeSystemClock(epochMillisResult = 1_000L)
         val toDeviceEvents = MutableSharedFlow<CustomToDeviceEvent>(extraBufferCapacity = 10)
         val service = createService(
@@ -100,62 +98,62 @@ class RustMyClawSessionStatusServiceTest {
         )
         runCurrent()
 
-        service.requestStatus(A_ROOM_ID)
+        service.requestActivity(A_ROOM_ID)
         toDeviceEvents.emit(
             aCustomToDeviceEvent(
-                eventType = RustMyClawSessionStatusService.UPDATE_TYPE,
-                content = updateContent(state = "waiting_agent", expiresAt = "1970-01-01T00:00:02Z"),
+                eventType = RustMyClawRoomActivityService.UPDATE_TYPE,
+                content = updateContent(state = "working", expiresAt = "1970-01-01T00:00:02Z"),
             )
         )
         runCurrent()
-        assertThat(service.statuses.value[A_ROOM_ID]?.state).isEqualTo(MyClawSessionStatusState.WAITING_AGENT)
+        assertThat(service.activities.value[A_ROOM_ID]?.state).isEqualTo(MyClawRoomActivityState.WORKING)
 
         clock.epochMillisResult = 2_000L
         advanceTimeBy(1_000L)
         runCurrent()
 
-        assertThat(service.statuses.value[A_ROOM_ID]).isNull()
+        assertThat(service.activities.value[A_ROOM_ID]).isNull()
     }
 
     @Test
-    fun `idle update clears waiting status immediately`() = runTest {
+    fun `idle update clears active activity immediately`() = runTest {
         val toDeviceEvents = MutableSharedFlow<CustomToDeviceEvent>(extraBufferCapacity = 10)
         val service = createService(toDeviceEvents = toDeviceEvents)
         runCurrent()
 
-        service.requestStatus(A_ROOM_ID)
+        service.requestActivity(A_ROOM_ID)
         toDeviceEvents.emit(
             aCustomToDeviceEvent(
-                eventType = RustMyClawSessionStatusService.UPDATE_TYPE,
-                content = updateContent(state = "waiting_llm"),
+                eventType = RustMyClawRoomActivityService.UPDATE_TYPE,
+                content = updateContent(state = "typing"),
             )
         )
         runCurrent()
-        assertThat(service.statuses.value[A_ROOM_ID]?.state).isEqualTo(MyClawSessionStatusState.WAITING_LLM)
+        assertThat(service.activities.value[A_ROOM_ID]?.state).isEqualTo(MyClawRoomActivityState.TYPING)
 
         toDeviceEvents.emit(
             aCustomToDeviceEvent(
-                eventType = RustMyClawSessionStatusService.UPDATE_TYPE,
+                eventType = RustMyClawRoomActivityService.UPDATE_TYPE,
                 content = updateContent(state = "idle", expiresAt = null),
             )
         )
         runCurrent()
 
-        assertThat(service.statuses.value[A_ROOM_ID]).isNull()
+        assertThat(service.activities.value[A_ROOM_ID]).isNull()
     }
 
     @Test
-    fun `statusFlow stays null for idle and unknown room list badge states`() = runTest {
+    fun `activityFlow stays null for idle states`() = runTest {
         val toDeviceEvents = MutableSharedFlow<CustomToDeviceEvent>(extraBufferCapacity = 10)
         val service = createService(toDeviceEvents = toDeviceEvents)
         runCurrent()
 
-        service.statusFlow(A_ROOM_ID).test {
+        service.activityFlow(A_ROOM_ID).test {
             assertThat(awaitItem()).isNull()
-            service.requestStatus(A_ROOM_ID)
+            service.requestActivity(A_ROOM_ID)
             toDeviceEvents.emit(
                 aCustomToDeviceEvent(
-                    eventType = RustMyClawSessionStatusService.UPDATE_TYPE,
+                    eventType = RustMyClawRoomActivityService.UPDATE_TYPE,
                     content = updateContent(state = "idle", expiresAt = null),
                 )
             )
@@ -165,7 +163,56 @@ class RustMyClawSessionStatusServiceTest {
     }
 
     @Test
-    fun `requestStatus does not repeat subscribe request before refresh interval`() = runTest {
+    fun `update from non candidate sender is ignored`() = runTest {
+        val toDeviceEvents = MutableSharedFlow<CustomToDeviceEvent>(extraBufferCapacity = 10)
+        val service = createService(toDeviceEvents = toDeviceEvents)
+        runCurrent()
+
+        service.requestActivity(A_ROOM_ID)
+        toDeviceEvents.emit(
+            aCustomToDeviceEvent(
+                eventType = RustMyClawRoomActivityService.UPDATE_TYPE,
+                sender = UserId("@evil:server.org"),
+                content = updateContent(state = "working"),
+            )
+        )
+        runCurrent()
+
+        assertThat(service.activities.value[A_ROOM_ID]).isNull()
+    }
+
+    @Test
+    fun `unsubscribe prunes candidate validation and clears activity`() = runTest {
+        val toDeviceEvents = MutableSharedFlow<CustomToDeviceEvent>(extraBufferCapacity = 10)
+        val service = createService(toDeviceEvents = toDeviceEvents)
+        runCurrent()
+
+        service.requestActivity(A_ROOM_ID)
+        toDeviceEvents.emit(
+            aCustomToDeviceEvent(
+                eventType = RustMyClawRoomActivityService.UPDATE_TYPE,
+                content = updateContent(state = "working"),
+            )
+        )
+        runCurrent()
+        assertThat(service.activities.value[A_ROOM_ID]?.state).isEqualTo(MyClawRoomActivityState.WORKING)
+
+        service.unsubscribeFromActivity(setOf(A_ROOM_ID))
+        runCurrent()
+        assertThat(service.activities.value[A_ROOM_ID]).isNull()
+
+        toDeviceEvents.emit(
+            aCustomToDeviceEvent(
+                eventType = RustMyClawRoomActivityService.UPDATE_TYPE,
+                content = updateContent(state = "typing"),
+            )
+        )
+        runCurrent()
+        assertThat(service.activities.value[A_ROOM_ID]).isNull()
+    }
+
+    @Test
+    fun `requestActivity does not repeat subscribe request before refresh interval`() = runTest {
         val clock = FakeSystemClock(epochMillisResult = 1_000L)
         val sentEvents = mutableListOf<SentCustomToDevice>()
         val service = createService(
@@ -173,14 +220,14 @@ class RustMyClawSessionStatusServiceTest {
             sentEvents = sentEvents,
         )
 
-        service.requestStatus(A_ROOM_ID)
-        service.requestStatus(A_ROOM_ID)
+        service.requestActivity(A_ROOM_ID)
+        service.requestActivity(A_ROOM_ID)
 
         assertThat(sentEvents).hasSize(1)
     }
 
     @Test
-    fun `requestStatus renews subscribe request after refresh interval`() = runTest {
+    fun `requestActivity retries automatically when pending response expires without activity`() = runTest {
         val clock = FakeSystemClock(epochMillisResult = 1_000L)
         val sentEvents = mutableListOf<SentCustomToDevice>()
         val service = createService(
@@ -188,12 +235,28 @@ class RustMyClawSessionStatusServiceTest {
             sentEvents = sentEvents,
         )
 
-        service.requestStatus(A_ROOM_ID)
-        clock.epochMillisResult = 1_000L + 8 * 60 * 1_000
-        service.requestStatus(A_ROOM_ID)
+        service.requestActivity(A_ROOM_ID)
+        advanceTimeBy(8_000L)
+        runCurrent()
 
         assertThat(sentEvents).hasSize(2)
-        assertThat(sentEvents.all { it.eventType == RustMyClawSessionStatusService.REQUEST_TYPE }).isTrue()
+    }
+
+    @Test
+    fun `requestActivity renews subscribe request after refresh interval`() = runTest {
+        val clock = FakeSystemClock(epochMillisResult = 1_000L)
+        val sentEvents = mutableListOf<SentCustomToDevice>()
+        val service = createService(
+            clock = clock,
+            sentEvents = sentEvents,
+        )
+
+        service.requestActivity(A_ROOM_ID)
+        clock.epochMillisResult = 1_000L + 8_000L
+        service.requestActivity(A_ROOM_ID)
+
+        assertThat(sentEvents).hasSize(2)
+        assertThat(sentEvents.all { it.eventType == RustMyClawRoomActivityService.REQUEST_TYPE }).isTrue()
         sentEvents.forEach { sent ->
             val content = Json.parseToJsonElement(sent.content).jsonObject
             assertThat(content["subscribe"]?.jsonPrimitive?.contentOrNull).isEqualTo("true")
@@ -204,15 +267,15 @@ class RustMyClawSessionStatusServiceTest {
         clock: FakeSystemClock = FakeSystemClock(epochMillisResult = 1_000L),
         toDeviceEvents: MutableSharedFlow<CustomToDeviceEvent> = MutableSharedFlow(extraBufferCapacity = 10),
         sentEvents: MutableList<SentCustomToDevice> = mutableListOf(),
-        joinedRoom: JoinedRoom = aMyClawDmRoom(),
-    ): RustMyClawSessionStatusService {
-        return RustMyClawSessionStatusService(
+        room: BaseRoom = aMyClawDmRoom(),
+    ): RustMyClawRoomActivityService {
+        return RustMyClawRoomActivityService(
             sessionId = A_SESSION_ID,
             deviceId = A_DEVICE_ID,
             coroutineScope = backgroundScope,
             dispatcher = StandardTestDispatcher(testScheduler),
             clock = clock,
-            getJoinedRoom = { roomId -> joinedRoom.takeIf { roomId == A_ROOM_ID } },
+            getRoom = { roomId -> room.takeIf { roomId == A_ROOM_ID } },
             sendCustomToDevice = { eventType, userId, deviceIds, content, txnId ->
                 sentEvents += SentCustomToDevice(eventType, userId, deviceIds, content, txnId)
                 Result.success(Unit)
@@ -221,23 +284,22 @@ class RustMyClawSessionStatusServiceTest {
         )
     }
 
-    private fun aMyClawDmRoom(): FakeJoinedRoom {
-        return FakeJoinedRoom(
-            baseRoom = FakeBaseRoom(
-                initialRoomInfo = aRoomInfo(id = A_ROOM_ID, isDm = true),
-                getDirectRoomMemberResult = {
-                    aRoomMember(userId = A_BOT_USER_ID)
-                },
-            )
+    private fun aMyClawDmRoom(): FakeBaseRoom {
+        return FakeBaseRoom(
+            initialRoomInfo = aRoomInfo(id = A_ROOM_ID, isDm = true),
+            getDirectRoomMemberResult = {
+                aRoomMember(userId = A_BOT_USER_ID)
+            },
         )
     }
 
     private fun aCustomToDeviceEvent(
         eventType: String,
+        sender: UserId = A_BOT_USER_ID,
         content: String,
     ) = CustomToDeviceEvent(
         eventType = eventType,
-        sender = A_BOT_USER_ID,
+        sender = sender,
         content = content,
         encrypted = false,
     )
@@ -260,7 +322,7 @@ class RustMyClawSessionStatusServiceTest {
             put("room_id", JsonPrimitive(A_ROOM_ID.value))
             put("session_id", JsonPrimitive("sess_123"))
             put("state", JsonPrimitive(state))
-            put("label", JsonPrimitive("Waiting for model"))
+            put("sender_display_name", JsonPrimitive("Spark"))
             put("updated_at", JsonPrimitive("1970-01-01T00:00:01Z"))
             expiresAt?.let {
                 put("expires_at", JsonPrimitive(it))

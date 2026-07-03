@@ -12,10 +12,10 @@ import io.element.android.libraries.matrix.api.core.DeviceId
 import io.element.android.libraries.matrix.api.core.RoomId
 import io.element.android.libraries.matrix.api.core.SessionId
 import io.element.android.libraries.matrix.api.core.UserId
-import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatus
-import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatusService
+import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivity
+import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivityService
 import io.element.android.libraries.matrix.api.myclaw.myClawCandidateUserIds
-import io.element.android.libraries.matrix.api.room.JoinedRoom
+import io.element.android.libraries.matrix.api.room.BaseRoom
 import io.element.android.libraries.matrix.api.to_device.CustomToDeviceEvent
 import io.element.android.services.toolbox.api.systemclock.SystemClock
 import kotlinx.coroutines.CoroutineDispatcher
@@ -39,21 +39,20 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import timber.log.Timber
 import java.util.UUID
-import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
-internal class RustMyClawSessionStatusService(
+internal class RustMyClawRoomActivityService(
     private val sessionId: SessionId,
     private val deviceId: DeviceId,
     private val coroutineScope: CoroutineScope,
     private val dispatcher: CoroutineDispatcher,
     private val clock: SystemClock,
-    private val getJoinedRoom: suspend (RoomId) -> JoinedRoom?,
+    private val getRoom: suspend (RoomId) -> BaseRoom?,
     private val sendCustomToDevice: suspend (String, UserId, List<DeviceId>, String, String?) -> Result<Unit>,
     private val customToDeviceEvents: (String) -> Flow<CustomToDeviceEvent>,
-) : MyClawSessionStatusService {
-    private val _statuses = MutableStateFlow<Map<RoomId, MyClawSessionStatus>>(emptyMap())
-    override val statuses: StateFlow<Map<RoomId, MyClawSessionStatus>> = _statuses
+) : MyClawRoomActivityService {
+    private val _activities = MutableStateFlow<Map<RoomId, MyClawRoomActivity>>(emptyMap())
+    override val activities: StateFlow<Map<RoomId, MyClawRoomActivity>> = _activities
 
     private val lock = Mutex()
     private val pendingResponseRooms = mutableMapOf<String, RoomId>()
@@ -66,14 +65,14 @@ internal class RustMyClawSessionStatusService(
         observeToDeviceEvents(UPDATE_TYPE)
     }
 
-    override fun statusFlow(roomId: RoomId): Flow<MyClawSessionStatus?> {
-        return statuses
+    override fun activityFlow(roomId: RoomId): Flow<MyClawRoomActivity?> {
+        return activities
             .map { it[roomId] }
             .distinctUntilChanged()
     }
 
-    override suspend fun requestStatus(roomId: RoomId, subscribe: Boolean) = withContext(dispatcher) {
-        val room = getJoinedRoom(roomId) ?: return@withContext
+    override suspend fun requestActivity(roomId: RoomId, subscribe: Boolean) = withContext(dispatcher) {
+        val room = getRoom(roomId) ?: return@withContext
         val candidateUserIds = room.myClawCandidateUserIds(sessionId)
         if (candidateUserIds.isEmpty()) return@withContext
         val nowMillis = clock.epochMillis()
@@ -96,7 +95,7 @@ internal class RustMyClawSessionStatusService(
             pendingResponseRooms[txnId] = roomId
             candidateUserIdsByRoom[roomId] = candidateUserIds.toSet()
         }
-        schedulePendingResponseCleanup(txnId)
+        schedulePendingResponseCleanup(txnId, roomId, subscribe)
 
         val requestContent = buildRequestContent(
             txnId = txnId,
@@ -117,7 +116,21 @@ internal class RustMyClawSessionStatusService(
                 pendingResponseRooms.remove(txnId)
                 subscribedRoomTimestamps.remove(roomId)
             }
-            Timber.w("Failed to send MyClaw session status request for roomId=$roomId")
+            Timber.w("Failed to send MyClaw room activity request for roomId=$roomId")
+        }
+    }
+
+    override fun unsubscribeFromActivity(roomIds: Set<RoomId>) {
+        if (roomIds.isEmpty()) return
+        coroutineScope.launch {
+            lock.withLock {
+                roomIds.forEach { roomId ->
+                    candidateUserIdsByRoom.remove(roomId)
+                    subscribedRoomTimestamps.remove(roomId)
+                    pendingResponseRooms.entries.removeAll { it.value == roomId }
+                }
+            }
+            roomIds.forEach(::clearActivity)
         }
     }
 
@@ -128,15 +141,15 @@ internal class RustMyClawSessionStatusService(
                 runCatchingExceptions {
                     handleEvent(eventType, event)
                 }.onFailure {
-                    Timber.w(it, "Failed to handle MyClaw session status event")
+                    Timber.w(it, "Failed to handle MyClaw room activity event")
                 }
             }
             .launchIn(coroutineScope)
     }
 
     private suspend fun handleEvent(eventType: String, event: CustomToDeviceEvent) {
-        val payload = MyClawSessionStatusParser.parse(event.content) ?: return
-        val roomId = payload.status.roomId
+        val payload = MyClawRoomActivityParser.parse(event.content) ?: return
+        val roomId = payload.roomId
         val validCandidate = lock.withLock {
             event.sender in candidateUserIdsByRoom[roomId].orEmpty()
         }
@@ -151,45 +164,52 @@ internal class RustMyClawSessionStatusService(
             }
         }
 
-        applyStatus(payload.status)
+        applyActivity(payload.activity, roomId)
     }
 
-    private fun applyStatus(status: MyClawSessionStatus) {
-        if (!status.isWaiting) {
-            clearStatus(status.roomId)
+    private fun applyActivity(activity: MyClawRoomActivity?, roomId: RoomId) {
+        if (activity == null) {
+            clearActivity(roomId)
             return
         }
         val nowMillis = clock.epochMillis()
-        if (status.expiresAtMillis <= nowMillis) {
-            clearStatus(status.roomId)
+        if (activity.expiresAtMillis <= nowMillis) {
+            clearActivity(activity.roomId)
             return
         }
 
-        _statuses.update { current ->
-            current + (status.roomId to status)
+        _activities.update { current ->
+            current + (activity.roomId to activity)
         }
-        expiryJobs.remove(status.roomId)?.cancel()
-        expiryJobs[status.roomId] = coroutineScope.launch {
-            delay(status.expiresAtMillis - nowMillis)
-            val current = _statuses.value[status.roomId]
-            if (current?.expiresAtMillis == status.expiresAtMillis && current.expiresAtMillis <= clock.epochMillis()) {
-                clearStatus(status.roomId)
+        expiryJobs.remove(activity.roomId)?.cancel()
+        expiryJobs[activity.roomId] = coroutineScope.launch {
+            delay(activity.expiresAtMillis - nowMillis)
+            val current = _activities.value[activity.roomId]
+            if (current?.expiresAtMillis == activity.expiresAtMillis && current.expiresAtMillis <= clock.epochMillis()) {
+                clearActivity(activity.roomId)
             }
         }
     }
 
-    private fun clearStatus(roomId: RoomId) {
+    private fun clearActivity(roomId: RoomId) {
         expiryJobs.remove(roomId)?.cancel()
-        _statuses.update { current ->
+        _activities.update { current ->
             current - roomId
         }
     }
 
-    private fun schedulePendingResponseCleanup(txnId: String) {
+    private fun schedulePendingResponseCleanup(txnId: String, roomId: RoomId, subscribe: Boolean) {
         coroutineScope.launch {
             delay(PENDING_RESPONSE_TTL)
-            lock.withLock {
-                pendingResponseRooms.remove(txnId)
+            val shouldRetry = lock.withLock {
+                val expiredRoomId = pendingResponseRooms.remove(txnId)
+                if (expiredRoomId != null) {
+                    subscribedRoomTimestamps.remove(expiredRoomId)
+                }
+                expiredRoomId != null && subscribe
+            }
+            if (shouldRetry) {
+                requestActivity(roomId = roomId, subscribe = subscribe)
             }
         }
     }
@@ -207,12 +227,12 @@ internal class RustMyClawSessionStatusService(
     }
 
     companion object {
-        const val REQUEST_TYPE = "icu.victor.myclaw.session_status.request"
-        const val RESPONSE_TYPE = "icu.victor.myclaw.session_status.response"
-        const val UPDATE_TYPE = "icu.victor.myclaw.session_status.update"
+        const val REQUEST_TYPE = "icu.victor.myclaw.room_activity.request"
+        const val RESPONSE_TYPE = "icu.victor.myclaw.room_activity.response"
+        const val UPDATE_TYPE = "icu.victor.myclaw.room_activity.update"
 
         private const val VERSION = 1
-        private val PENDING_RESPONSE_TTL = 30.seconds
-        private val SUBSCRIPTION_REFRESH_INTERVAL = 8.minutes
+        private val PENDING_RESPONSE_TTL = 8.seconds
+        private val SUBSCRIPTION_REFRESH_INTERVAL = 8.seconds
     }
 }

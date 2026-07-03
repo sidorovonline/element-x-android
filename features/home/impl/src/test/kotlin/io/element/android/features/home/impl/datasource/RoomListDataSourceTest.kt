@@ -17,7 +17,7 @@ import io.element.android.libraries.matrix.api.roomlist.RoomListService
 import io.element.android.libraries.matrix.test.A_ROOM_ID
 import io.element.android.libraries.matrix.test.A_ROOM_ID_2
 import io.element.android.libraries.matrix.test.A_ROOM_ID_3
-import io.element.android.libraries.matrix.test.myclaw.FakeMyClawSessionStatusService
+import io.element.android.libraries.matrix.test.myclaw.FakeMyClawRoomActivityService
 import io.element.android.libraries.matrix.test.notificationsettings.FakeNotificationSettingsService
 import io.element.android.libraries.matrix.test.room.aRoomSummary
 import io.element.android.libraries.matrix.test.roomlist.FakeDynamicRoomList
@@ -266,8 +266,8 @@ class RoomListDataSourceTest {
     }
 
     @Test
-    fun `visible rooms refresh MyClaw session status periodically without visible range changes`() = runTest {
-        val myClawSessionStatusService = FakeMyClawSessionStatusService()
+    fun `visible rooms refresh MyClaw room activity periodically without visible range changes`() = runTest {
+        val myClawRoomActivityService = FakeMyClawRoomActivityService()
         val roomList = FakeDynamicRoomList(summaries = MutableStateFlow(listOf(aRoomSummary(roomId = A_ROOM_ID), aRoomSummary(roomId = A_ROOM_ID_2))))
         val roomListService = FakeRoomListService(
             createRoomListLambda = { roomList }
@@ -276,7 +276,7 @@ class RoomListDataSourceTest {
         }
         val roomListDataSource = createRoomListDataSource(
             roomListService = roomListService,
-            myClawSessionStatusService = myClawSessionStatusService,
+            myClawRoomActivityService = myClawRoomActivityService,
         )
 
         roomListDataSource.launchIn(backgroundScope)
@@ -285,18 +285,18 @@ class RoomListDataSourceTest {
         advanceTimeBy(300L)
         runCurrent()
 
-        assertThat(myClawSessionStatusService.requestedRoomIds).containsAtLeast(A_ROOM_ID, A_ROOM_ID_2)
-        val requestCountAfterInitialRefresh = myClawSessionStatusService.requestedRoomIds.size
+        assertThat(myClawRoomActivityService.requestedRoomIds).containsAtLeast(A_ROOM_ID, A_ROOM_ID_2)
+        val requestCountAfterInitialRefresh = myClawRoomActivityService.requestedRoomIds.size
 
-        advanceTimeBy(8 * 60 * 1_000L)
+        advanceTimeBy(8_000L)
         runCurrent()
 
-        assertThat(myClawSessionStatusService.requestedRoomIds.size).isAtLeast(requestCountAfterInitialRefresh + 2)
+        assertThat(myClawRoomActivityService.requestedRoomIds.size).isAtLeast(requestCountAfterInitialRefresh + 2)
     }
 
     @Test
-    fun `empty visible range cancels MyClaw session status refresh`() = runTest {
-        val myClawSessionStatusService = FakeMyClawSessionStatusService()
+    fun `empty visible range cancels MyClaw room activity refresh`() = runTest {
+        val myClawRoomActivityService = FakeMyClawRoomActivityService()
         val roomList = FakeDynamicRoomList(summaries = MutableStateFlow(listOf(aRoomSummary(roomId = A_ROOM_ID), aRoomSummary(roomId = A_ROOM_ID_2))))
         val roomListService = FakeRoomListService(
             createRoomListLambda = { roomList }
@@ -305,7 +305,7 @@ class RoomListDataSourceTest {
         }
         val roomListDataSource = createRoomListDataSource(
             roomListService = roomListService,
-            myClawSessionStatusService = myClawSessionStatusService,
+            myClawRoomActivityService = myClawRoomActivityService,
         )
 
         roomListDataSource.launchIn(backgroundScope)
@@ -314,17 +314,18 @@ class RoomListDataSourceTest {
         advanceTimeBy(300L)
         runCurrent()
 
-        assertThat(myClawSessionStatusService.requestedRoomIds).containsAtLeast(A_ROOM_ID, A_ROOM_ID_2)
+        assertThat(myClawRoomActivityService.requestedRoomIds).containsAtLeast(A_ROOM_ID, A_ROOM_ID_2)
 
         roomListDataSource.updateVisibleRange(0 until 0)
         advanceTimeBy(300L)
         runCurrent()
-        val requestCountAfterEmptyRange = myClawSessionStatusService.requestedRoomIds.size
+        val requestCountAfterEmptyRange = myClawRoomActivityService.requestedRoomIds.size
+        assertThat(myClawRoomActivityService.unsubscribedRoomIds).containsAtLeast(A_ROOM_ID, A_ROOM_ID_2)
 
-        advanceTimeBy(8 * 60 * 1_000L)
+        advanceTimeBy(8_000L)
         runCurrent()
 
-        assertThat(myClawSessionStatusService.requestedRoomIds).hasSize(requestCountAfterEmptyRange)
+        assertThat(myClawRoomActivityService.requestedRoomIds).hasSize(requestCountAfterEmptyRange)
     }
 
     private fun TestScope.createRoomListDataSource(
@@ -333,11 +334,11 @@ class RoomListDataSourceTest {
         notificationSettingsService: FakeNotificationSettingsService = FakeNotificationSettingsService(),
         dateTimeObserver: FakeDateTimeObserver = FakeDateTimeObserver(),
         analyticsService: FakeAnalyticsService = FakeAnalyticsService(),
-        myClawSessionStatusService: FakeMyClawSessionStatusService = FakeMyClawSessionStatusService(),
+        myClawRoomActivityService: FakeMyClawRoomActivityService = FakeMyClawRoomActivityService(),
     ) = RoomListDataSource(
         roomListService = roomListService,
         roomListRoomSummaryFactory = roomListRoomSummaryFactory,
-        myClawSessionStatusService = myClawSessionStatusService,
+        myClawRoomActivityService = myClawRoomActivityService,
         coroutineDispatchers = testCoroutineDispatchers(),
         notificationSettingsService = notificationSettingsService,
         sessionCoroutineScope = backgroundScope,

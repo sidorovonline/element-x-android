@@ -42,6 +42,7 @@ import io.element.android.features.messages.impl.R
 import io.element.android.libraries.designsystem.preview.ElementPreview
 import io.element.android.libraries.designsystem.preview.PreviewsDayNight
 import io.element.android.libraries.designsystem.theme.components.Text
+import io.element.android.libraries.ui.strings.CommonStrings
 import kotlinx.collections.immutable.ImmutableList
 
 @Suppress("MultipleEmitters") // False positive
@@ -50,7 +51,11 @@ fun TypingNotificationView(
     state: TypingNotificationState,
     modifier: Modifier = Modifier,
 ) {
-    val displayNotifications = state.typingMembers.isNotEmpty() && state.renderTypingNotifications
+    val displayNotifications = (
+        state.typingMembers.isNotEmpty() ||
+            state.typingDisplayName != null ||
+            state.workingDisplayName != null
+        ) && state.renderTypingNotifications
 
     @Suppress("ModifierNaming")
     @Composable
@@ -74,7 +79,11 @@ fun TypingNotificationView(
         enter = fadeIn() + expandVertically(),
         exit = fadeOut() + shrinkVertically(),
     ) {
-        val typingNotificationText = computeTypingNotificationText(state.typingMembers)
+        val typingNotificationText = computeTypingNotificationText(
+            typingMembers = state.typingMembers,
+            typingDisplayName = state.typingDisplayName,
+            workingDisplayName = state.workingDisplayName,
+        )
         Box(contentAlignment = Alignment.BottomStart) {
             // Reserve the space for the typing notification by adding an invisible text
             TypingText(
@@ -98,10 +107,34 @@ fun TypingNotificationView(
 }
 
 @Composable
-private fun computeTypingNotificationText(typingMembers: ImmutableList<TypingRoomMember>): AnnotatedString {
+private fun computeTypingNotificationText(
+    typingMembers: ImmutableList<TypingRoomMember>,
+    typingDisplayName: String?,
+    workingDisplayName: String?,
+): AnnotatedString {
     // Remember the last value to avoid empty typing messages while animating
     var result by remember { mutableStateOf(AnnotatedString("")) }
-    if (typingMembers.isNotEmpty()) {
+    if (workingDisplayName != null) {
+        val tmpString = stringResource(CommonStrings.screen_room_myclaw_working, "<>")
+        val parts = tmpString.split("<>")
+        result = buildAnnotatedString {
+            append(parts[0])
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                append(workingDisplayName)
+            }
+            append(parts[1])
+        }
+    } else if (typingDisplayName != null) {
+        val tmpString = stringResource(CommonStrings.screen_room_myclaw_typing, "<>")
+        val parts = tmpString.split("<>")
+        result = buildAnnotatedString {
+            append(parts[0])
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                append(typingDisplayName)
+            }
+            append(parts[1])
+        }
+    } else if (typingMembers.isNotEmpty()) {
         val names = when (typingMembers.size) {
             0 -> "" // Cannot happen
             1 -> typingMembers[0].disambiguatedDisplayName

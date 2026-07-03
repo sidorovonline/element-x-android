@@ -19,7 +19,7 @@ import io.element.android.libraries.matrix.api.core.SessionId
 import io.element.android.libraries.matrix.api.encryption.EncryptionService
 import io.element.android.libraries.matrix.api.media.MatrixMediaLoader
 import io.element.android.libraries.matrix.api.media.MediaPreviewService
-import io.element.android.libraries.matrix.api.myclaw.MyClawSessionStatusService
+import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivityService
 import io.element.android.libraries.matrix.api.notificationsettings.NotificationSettingsService
 import io.element.android.libraries.matrix.api.room.RoomMembershipObserver
 import io.element.android.libraries.matrix.api.roomdirectory.RoomDirectoryService
@@ -48,8 +48,8 @@ object SessionMatrixModule {
     }
 
     @Provides
-    fun providesMyClawSessionStatusService(matrixClient: MatrixClient): MyClawSessionStatusService {
-        return matrixClient.myClawSessionStatusService
+    fun providesMyClawRoomActivityService(matrixClient: MatrixClient): MyClawRoomActivityService {
+        return matrixClient.myClawRoomActivityService
     }
 
     @Provides

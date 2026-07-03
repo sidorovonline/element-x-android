@@ -18,6 +18,10 @@ data class TypingNotificationState(
     val renderTypingNotifications: Boolean,
     /** The room members currently typing. */
     val typingMembers: ImmutableList<TypingRoomMember>,
+    /** The MyClaw room activity display name to render as typing, or null when inactive. */
+    val typingDisplayName: String?,
+    /** The MyClaw room activity display name to render as working, or null when inactive. */
+    val workingDisplayName: String?,
     /** Whether to reserve space for the typing notifications at the bottom of the timeline. */
     val reserveSpace: Boolean,
 )
