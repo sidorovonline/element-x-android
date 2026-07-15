@@ -172,6 +172,7 @@ fun TimelineItemEventRow(
             onLinkClick = onLinkClick,
             onLinkLongClick = onLinkLongClick,
             eventSink = eventSink,
+            renderIncomingMarkdown = shouldRenderIncomingMarkdown(event.isMine, timelineMode),
             modifier = contentModifier,
             onContentLayoutChange = onContentLayoutChange
         )

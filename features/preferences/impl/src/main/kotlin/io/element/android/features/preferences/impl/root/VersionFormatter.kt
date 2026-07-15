@@ -14,7 +14,7 @@ import io.element.android.libraries.core.meta.BuildMeta
 import io.element.android.libraries.ui.strings.CommonStrings
 import io.element.android.services.toolbox.api.strings.StringProvider
 
-private const val MYCLAW_BUILD_MARKER = "MyClaw build 2026-07-02.1"
+private const val MYCLAW_BUILD_MARKER = "MyClaw build 2026-07-15.1"
 
 interface VersionFormatter {
     fun get(): String

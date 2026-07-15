@@ -49,6 +49,7 @@ sqldelight = "2.3.2"
 wysiwyg = "2.42.0"
 telephoto = "0.19.0"
 haze = "1.7.2"
+commonmark = "0.29.0"
 
 # Dependency analysis
 dependencyAnalysis = "3.15.0"
@@ -198,6 +199,8 @@ kotlinx_collections_immutable = "org.jetbrains.kotlinx:kotlinx-collections-immut
 showkase = { module = "com.airbnb.android:showkase", version.ref = "showkase" }
 showkase_processor = { module = "com.airbnb.android:showkase-processor", version.ref = "showkase" }
 jsoup = "org.jsoup:jsoup:1.22.2"
+commonmark_core = { module = "org.commonmark:commonmark", version.ref = "commonmark" }
+commonmark_gfm_tables = { module = "org.commonmark:commonmark-ext-gfm-tables", version.ref = "commonmark" }
 appyx_core = { module = "com.bumble.appyx:core", version.ref = "appyx" }
 molecule-runtime = "app.cash.molecule:molecule-runtime:2.2.0"
 timber = "com.jakewharton.timber:timber:5.0.1"

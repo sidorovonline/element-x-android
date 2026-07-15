@@ -26,6 +26,8 @@ import io.element.android.features.messages.impl.timeline.factories.event.Timeli
 import io.element.android.features.messages.impl.timeline.factories.virtual.TimelineItemDaySeparatorFactory
 import io.element.android.features.messages.impl.timeline.factories.virtual.TimelineItemVirtualFactory
 import io.element.android.features.messages.impl.timeline.groups.TimelineItemGrouper
+import io.element.android.features.messages.impl.timeline.markdown.DefaultIncomingMarkdownParser
+import io.element.android.features.messages.impl.timeline.markdown.IncomingMarkdownParser
 import io.element.android.features.messages.impl.utils.FakeTextPillificationHelper
 import io.element.android.features.messages.test.timeline.FakeHtmlConverterProvider
 import io.element.android.features.poll.test.pollcontent.FakePollContentStateFactory
@@ -52,6 +54,7 @@ internal fun TestScope.aTimelineItemsFactoryCreator(): TimelineItemsFactory.Crea
 internal fun aTimelineItemContentFactory(
     timelineEventFormatter: TimelineEventFormatter = aTimelineEventFormatter(),
     matrixClient: FakeMatrixClient = FakeMatrixClient(),
+    incomingMarkdownParser: IncomingMarkdownParser = DefaultIncomingMarkdownParser(),
 ): TimelineItemContentFactory = TimelineItemContentFactory(
     messageFactory = TimelineItemContentMessageFactory(
         fileSizeFormatter = FakeFileSizeFormatter(),
@@ -60,6 +63,7 @@ internal fun aTimelineItemContentFactory(
         permalinkParser = FakePermalinkParser(),
         textPillificationHelper = FakeTextPillificationHelper(),
     ),
+    incomingMarkdownParser = incomingMarkdownParser,
     redactedMessageFactory = TimelineItemContentRedactedFactory(),
     stickerFactory = TimelineItemContentStickerFactory(
         fileSizeFormatter = FakeFileSizeFormatter(),

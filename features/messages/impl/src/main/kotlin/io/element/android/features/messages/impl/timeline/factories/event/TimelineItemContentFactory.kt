@@ -10,11 +10,13 @@ package io.element.android.features.messages.impl.timeline.factories.event
 
 import dev.zacsweers.metro.Inject
 import io.element.android.features.location.api.Location
+import io.element.android.features.messages.impl.timeline.markdown.IncomingMarkdownParser
 import io.element.android.features.messages.impl.timeline.model.event.RtcNotificationState
 import io.element.android.features.messages.impl.timeline.model.event.TimelineItemEventContent
 import io.element.android.features.messages.impl.timeline.model.event.TimelineItemLegacyCallInviteContent
 import io.element.android.features.messages.impl.timeline.model.event.TimelineItemLocationContent
 import io.element.android.features.messages.impl.timeline.model.event.TimelineItemRtcNotificationContent
+import io.element.android.features.messages.impl.timeline.model.event.TimelineItemTextContent
 import io.element.android.features.messages.impl.timeline.model.event.TimelineItemUnknownContent
 import io.element.android.libraries.dateformatter.api.DateFormatter
 import io.element.android.libraries.dateformatter.api.DateFormatterMode
@@ -36,6 +38,7 @@ import io.element.android.libraries.matrix.api.timeline.item.event.RedactedConte
 import io.element.android.libraries.matrix.api.timeline.item.event.RoomMembershipContent
 import io.element.android.libraries.matrix.api.timeline.item.event.StateContent
 import io.element.android.libraries.matrix.api.timeline.item.event.StickerContent
+import io.element.android.libraries.matrix.api.timeline.item.event.TextMessageType
 import io.element.android.libraries.matrix.api.timeline.item.event.UnableToDecryptContent
 import io.element.android.libraries.matrix.api.timeline.item.event.UnknownContent
 import io.element.android.libraries.matrix.api.timeline.item.event.getDisambiguatedDisplayName
@@ -45,6 +48,7 @@ import io.element.android.services.toolbox.api.strings.StringProvider
 @Inject
 class TimelineItemContentFactory(
     private val messageFactory: TimelineItemContentMessageFactory,
+    private val incomingMarkdownParser: IncomingMarkdownParser,
     private val redactedMessageFactory: TimelineItemContentRedactedFactory,
     private val stickerFactory: TimelineItemContentStickerFactory,
     private val pollFactory: TimelineItemContentPollFactory,
@@ -80,12 +84,25 @@ class TimelineItemContentFactory(
             is FailedToParseMessageLikeContent -> failedToParseMessageFactory.create(itemContent)
             is FailedToParseStateContent -> failedToParseStateFactory.create(itemContent)
             is MessageContent -> {
-                messageFactory.create(
+                val plainTextContent = itemContent.type as? TextMessageType
+                val message = messageFactory.create(
                     senderId = sender,
                     senderProfile = senderProfile,
                     content = itemContent,
                     eventId = eventId,
                 )
+                if (
+                    !isOutgoing &&
+                    plainTextContent != null &&
+                    plainTextContent.formatted == null &&
+                    itemContent.inReplyTo == null &&
+                    message is TimelineItemTextContent &&
+                    message.htmlDocument == null
+                ) {
+                    message.copy(incomingMarkdown = incomingMarkdownParser.parse(message.body))
+                } else {
+                    message
+                }
             }
             is ProfileChangeContent -> {
                 val senderDisambiguatedDisplayName = senderProfile.getDisambiguatedDisplayName(sender)
