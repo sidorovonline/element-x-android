@@ -38,6 +38,7 @@ import org.commonmark.parser.IncludeSourceSpans
 import org.commonmark.parser.Parser
 import java.net.URI
 import java.util.ArrayDeque
+import java.util.IdentityHashMap
 
 interface IncomingMarkdownParser {
     fun parse(source: String): IncomingMarkdownDocument?
@@ -82,25 +83,42 @@ class DefaultIncomingMarkdownParser internal constructor(
     private fun validate(root: Node, source: String): Boolean {
         var nodeCount = 0
         var totalTableCells = 0
-        var containsSupportedStructure = false
+        val visitedNodes = mutableListOf<Node>()
         val pending = ArrayDeque<NodeAtDepth>().apply { add(NodeAtDepth(root, 0)) }
 
         while (pending.isNotEmpty()) {
             val (node, depth) = pending.removeLast()
             nodeCount++
             if (nodeCount > limits.maxAstNodes || depth > limits.maxNestingDepth) return false
-            when (node) {
-                is Heading -> containsSupportedStructure = true
-                is TableBlock -> {
-                    containsSupportedStructure = true
-                    val tableCellCount = validateTable(node, source) ?: return false
-                    totalTableCells += tableCellCount
-                    if (totalTableCells > limits.maxTotalTableCells) return false
-                }
+            visitedNodes += node
+            if (node is TableBlock) {
+                val tableCellCount = validateTable(node, source) ?: return false
+                totalTableCells += tableCellCount
+                if (totalTableCells > limits.maxTotalTableCells) return false
             }
             node.children().forEach { pending.add(NodeAtDepth(it, depth + 1)) }
         }
-        return containsSupportedStructure
+
+        val hasVisibleText = IdentityHashMap<Node, Boolean>()
+        visitedNodes.asReversed().forEach { node ->
+            hasVisibleText[node] = when (node) {
+                is Text -> node.literal.any { !it.isWhitespace() }
+                is Code -> node.literal.any { !it.isWhitespace() }
+                is HtmlInline, is Image -> false
+                else -> node.children().any { hasVisibleText[it] == true }
+            }
+        }
+
+        return visitedNodes.any { node ->
+            when (node) {
+                is Heading, is TableBlock, is StrongEmphasis, is Code, is BlockQuote -> hasVisibleText[node] == true
+                is Link -> hasVisibleText[node] == true && isSafeLinkDestination(node.destination)
+                is BulletList, is OrderedList -> node.children()
+                    .filterIsInstance<ListItem>()
+                    .count { hasVisibleText[it] == true } >= 2
+                else -> false
+            }
+        }
     }
 
     private fun validateTable(table: TableBlock, source: String): Int? {

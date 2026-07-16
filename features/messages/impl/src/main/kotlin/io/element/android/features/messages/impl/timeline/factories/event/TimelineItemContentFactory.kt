@@ -10,7 +10,9 @@ package io.element.android.features.messages.impl.timeline.factories.event
 
 import dev.zacsweers.metro.Inject
 import io.element.android.features.location.api.Location
+import io.element.android.features.messages.impl.timeline.markdown.IncomingMarkdownCompatibilityFormatter
 import io.element.android.features.messages.impl.timeline.markdown.IncomingMarkdownParser
+import io.element.android.features.messages.impl.timeline.markdown.isWithinRenderingLimits
 import io.element.android.features.messages.impl.timeline.model.event.RtcNotificationState
 import io.element.android.features.messages.impl.timeline.model.event.TimelineItemEventContent
 import io.element.android.features.messages.impl.timeline.model.event.TimelineItemLegacyCallInviteContent
@@ -49,6 +51,7 @@ import io.element.android.services.toolbox.api.strings.StringProvider
 class TimelineItemContentFactory(
     private val messageFactory: TimelineItemContentMessageFactory,
     private val incomingMarkdownParser: IncomingMarkdownParser,
+    private val incomingMarkdownCompatibilityFormatter: IncomingMarkdownCompatibilityFormatter,
     private val redactedMessageFactory: TimelineItemContentRedactedFactory,
     private val stickerFactory: TimelineItemContentStickerFactory,
     private val pollFactory: TimelineItemContentPollFactory,
@@ -99,7 +102,11 @@ class TimelineItemContentFactory(
                     message is TimelineItemTextContent &&
                     message.htmlDocument == null
                 ) {
-                    message.copy(incomingMarkdown = incomingMarkdownParser.parse(message.body))
+                    message.copy(
+                        incomingMarkdown = incomingMarkdownParser.parse(message.body)
+                            ?.let(incomingMarkdownCompatibilityFormatter::format)
+                            ?.takeIf { it.isWithinRenderingLimits() }
+                    )
                 } else {
                     message
                 }

@@ -403,13 +403,13 @@ class MessagesViewTest : RobolectricTest() {
     @Test
     fun `selecting select text action opens text selection dialog`() = runAndroidComposeUiTest {
         val rawMarkdown = """
-            # Build matrix
-
-            | Component | Status |
-            | :--- | ---: |
-            | Parser | Ready |
-
-                keep indentation
+            **Strong release ready**
+            Visit https://example.org/docs
+            Owner @alice:example.org
+            - First item
+            - Second item
+            > quoted source
+            `inline code`
         """.trimIndent()
         val eventsRecorder = EventsRecorder<MessagesEvent>(expectEvents = false)
         val state = aMessagesState(

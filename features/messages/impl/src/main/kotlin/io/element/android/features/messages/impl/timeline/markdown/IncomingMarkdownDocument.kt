@@ -8,12 +8,38 @@
 package io.element.android.features.messages.impl.timeline.markdown
 
 import androidx.compose.runtime.Immutable
+import io.element.android.libraries.textcomposer.mentions.MentionType
 import kotlinx.collections.immutable.ImmutableList
 
 @Immutable
 data class IncomingMarkdownDocument(
     val blocks: ImmutableList<IncomingMarkdownBlock>,
 )
+
+internal data class IncomingMarkdownRenderingLimits(
+    val maxNativeMentionTableCells: Int = 16,
+)
+
+internal fun IncomingMarkdownDocument.isWithinRenderingLimits(
+    limits: IncomingMarkdownRenderingLimits = IncomingMarkdownRenderingLimits(),
+): Boolean {
+    return blocks.nativeMentionTableCellCount() <= limits.maxNativeMentionTableCells
+}
+
+private fun ImmutableList<IncomingMarkdownBlock>.nativeMentionTableCellCount(): Int {
+    return sumOf { block ->
+        when (block) {
+            is IncomingMarkdownBlock.Table -> block.rows.sumOf { row ->
+                row.cells.count { cell -> cell.content.spans.any { it.style is IncomingMarkdownInlineStyle.Mention } }
+            }
+            is IncomingMarkdownBlock.BlockQuote -> block.blocks.nativeMentionTableCellCount()
+            is IncomingMarkdownBlock.ListBlock -> block.items.sumOf { it.nativeMentionTableCellCount() }
+            is IncomingMarkdownBlock.Heading,
+            is IncomingMarkdownBlock.Literal,
+            is IncomingMarkdownBlock.Paragraph -> 0
+        }
+    }
+}
 
 @Immutable
 sealed interface IncomingMarkdownBlock {
@@ -86,5 +112,9 @@ sealed interface IncomingMarkdownInlineStyle {
 
     data class Link(
         val destination: String,
+    ) : IncomingMarkdownInlineStyle
+
+    data class Mention(
+        val type: MentionType,
     ) : IncomingMarkdownInlineStyle
 }

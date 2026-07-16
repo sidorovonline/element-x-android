@@ -10,8 +10,16 @@ package io.element.android.features.messages.impl.timeline.factories.event
 import com.google.common.truth.Truth.assertThat
 import io.element.android.features.messages.impl.fixtures.aTimelineItemContentFactory
 import io.element.android.features.messages.impl.timeline.markdown.DefaultIncomingMarkdownParser
+import io.element.android.features.messages.impl.timeline.markdown.IncomingMarkdownCompatibilityFormatter
+import io.element.android.features.messages.impl.timeline.markdown.IncomingMarkdownBlock
 import io.element.android.features.messages.impl.timeline.markdown.IncomingMarkdownDocument
+import io.element.android.features.messages.impl.timeline.markdown.IncomingMarkdownInlineContent
+import io.element.android.features.messages.impl.timeline.markdown.IncomingMarkdownInlineSpan
+import io.element.android.features.messages.impl.timeline.markdown.IncomingMarkdownInlineStyle
 import io.element.android.features.messages.impl.timeline.markdown.IncomingMarkdownParser
+import io.element.android.features.messages.impl.timeline.markdown.IncomingMarkdownTableAlignment
+import io.element.android.features.messages.impl.timeline.markdown.IncomingMarkdownTableCell
+import io.element.android.features.messages.impl.timeline.markdown.IncomingMarkdownTableRow
 import io.element.android.features.messages.impl.timeline.model.event.TimelineItemNoticeContent
 import io.element.android.features.messages.impl.timeline.model.event.TimelineItemTextContent
 import io.element.android.libraries.matrix.api.timeline.item.event.EmoteMessageType
@@ -26,6 +34,9 @@ import io.element.android.libraries.matrix.test.A_USER_ID
 import io.element.android.libraries.matrix.test.A_USER_ID_2
 import io.element.android.libraries.matrix.test.FakeMatrixClient
 import io.element.android.libraries.matrix.test.timeline.aProfileDetails
+import io.element.android.libraries.textcomposer.mentions.MentionType
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
 
@@ -45,6 +56,23 @@ class TimelineItemContentFactoryMarkdownTest {
 
         assertThat(result.incomingMarkdown).isNotNull()
         assertThat(parser.inputs).containsExactly(markdown)
+    }
+
+    @Test
+    fun `incoming strong-only plain text receives parsed Markdown`() = runTest {
+        val body = "**Strong release**\nVisit https://example.org\nOwner @alice:example.org"
+        val parser = CountingParser()
+        val result = factory(parser).create(
+            itemContent = message(TextMessageType(body, formatted = null)),
+            eventId = AN_EVENT_ID,
+            isEditable = false,
+            sender = A_USER_ID_2,
+            senderProfile = aProfileDetails(),
+        ) as TimelineItemTextContent
+
+        assertThat(result.incomingMarkdown).isNotNull()
+        assertThat(result.body).isEqualTo(body)
+        assertThat(parser.inputs).containsExactly(body)
     }
 
     @Test
@@ -166,10 +194,57 @@ class TimelineItemContentFactoryMarkdownTest {
         assertThat(result.body).isEqualTo(body)
     }
 
-    private fun factory(parser: IncomingMarkdownParser) = aTimelineItemContentFactory(
+    @Test
+    fun `mention-heavy tables fall back without changing the raw body`() = runTest {
+        val body = "# Keep this exact"
+        val result = factory(
+            parser = DefaultIncomingMarkdownParser(),
+            formatter = object : IncomingMarkdownCompatibilityFormatter {
+                override fun format(document: IncomingMarkdownDocument) = mentionTableDocument(17)
+            },
+        ).create(
+            itemContent = message(TextMessageType(body, formatted = null)),
+            eventId = AN_EVENT_ID,
+            isEditable = false,
+            sender = A_USER_ID_2,
+            senderProfile = aProfileDetails(),
+        ) as TimelineItemTextContent
+
+        assertThat(result.incomingMarkdown).isNull()
+        assertThat(result.body).isEqualTo(body)
+    }
+
+    private fun factory(
+        parser: IncomingMarkdownParser,
+        formatter: IncomingMarkdownCompatibilityFormatter = object : IncomingMarkdownCompatibilityFormatter {
+            override fun format(document: IncomingMarkdownDocument) = document
+        },
+    ) = aTimelineItemContentFactory(
         matrixClient = FakeMatrixClient(),
         incomingMarkdownParser = parser,
+        incomingMarkdownCompatibilityFormatter = formatter,
     )
+
+    private fun mentionTableDocument(cellCount: Int): IncomingMarkdownDocument {
+        val mentionStyle = IncomingMarkdownInlineStyle.Mention(MentionType.User(A_USER_ID))
+        val cells = List(cellCount) {
+            IncomingMarkdownTableCell(
+                content = IncomingMarkdownInlineContent(
+                    text = "@",
+                    spans = persistentListOf(IncomingMarkdownInlineSpan(0, 1, mentionStyle)),
+                ),
+                header = false,
+                alignment = IncomingMarkdownTableAlignment.START,
+            )
+        }.toImmutableList()
+        return IncomingMarkdownDocument(
+            blocks = persistentListOf(
+                IncomingMarkdownBlock.Table(
+                    rows = persistentListOf(IncomingMarkdownTableRow(cells))
+                )
+            )
+        )
+    }
 
     private fun message(
         type: io.element.android.libraries.matrix.api.timeline.item.event.MessageType,

@@ -37,12 +37,57 @@ class IncomingMarkdownParserTest {
     }
 
     @Test
-    fun `parse does not activate from text patterns without heading or table nodes`() {
+    fun `parse does not activate from text patterns without qualifying nodes`() {
         val parser = parser()
 
         assertThat(parser.parse("Ordinary text\nwith another line")).isNull()
-        assertThat(parser.parse("`# code, not a heading`")).isNull()
         assertThat(parser.parse("| not | a table |\n| missing | delimiter | ")).isNull()
+    }
+
+    @Test
+    fun `parse activates from deliberate non-whitespace Markdown structures`() {
+        val parser = parser()
+
+        assertThat(parser.parse("**Strong release**")).isNotNull()
+        assertThat(parser.parse("`inline code`")).isNotNull()
+        assertThat(parser.parse("[Element](https://element.io)")).isNotNull()
+        assertThat(parser.parse("> Quoted response")).isNotNull()
+        assertThat(parser.parse("- First item\n- Second item")).isNotNull()
+        assertThat(parser.parse("1. First item\n2. Second item")).isNotNull()
+    }
+
+    @Test
+    fun `parse requires non-whitespace visible content`() {
+        val parser = parser()
+
+        assertThat(parser.parse("#   ")).isNull()
+        assertThat(parser.parse("**   **")).isNull()
+        assertThat(parser.parse("`   `")).isNull()
+        assertThat(parser.parse("[   ](https://element.io)")).isNull()
+        assertThat(parser.parse(">   ")).isNull()
+        assertThat(parser.parse(">\n>   ")).isNull()
+        assertThat(parser.parse("- \n- ")).isNull()
+        assertThat(parser.parse("- Visible item\n- ")).isNull()
+        assertThat(parser.parse("|   |   |\n|---|---|")).isNull()
+    }
+
+    @Test
+    fun `parse leaves ambiguous malformed and unsupported standalone syntax literal`() {
+        val parser = parser()
+
+        assertThat(parser.parse("*casual emphasis*")).isNull()
+        assertThat(parser.parse("_casual emphasis_")).isNull()
+        assertThat(parser.parse("1. One prose item")).isNull()
+        assertThat(parser.parse("https://example.org")).isNull()
+        assertThat(parser.parse("[Script](javascript:alert(1))")).isNull()
+        assertThat(parser.parse("<strong>Raw HTML</strong>")).isNull()
+        assertThat(parser.parse("![Alt text](https://example.org/image.png)")).isNull()
+        assertThat(parser.parse("---")).isNull()
+        assertThat(parser.parse("```\ncode block\n```")).isNull()
+        assertThat(parser.parse("    indented code")).isNull()
+        assertThat(parser.parse("\\*\\*escaped strong\\*\\*")).isNull()
+        assertThat(parser.parse("**unclosed strong")).isNull()
+        assertThat(parser.parse("`unmatched code")).isNull()
     }
 
     @Test

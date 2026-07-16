@@ -44,6 +44,6 @@ class VersionFormatterTest {
 
     companion object {
         const val VERSION = "version"
-        const val MYCLAW_BUILD_MARKER = "MyClaw build 2026-07-15.1"
+        const val MYCLAW_BUILD_MARKER = "MyClaw build 2026-07-15.2"
     }
 }

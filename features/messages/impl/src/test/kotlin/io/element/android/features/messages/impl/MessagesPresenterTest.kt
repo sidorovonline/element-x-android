@@ -300,13 +300,13 @@ class MessagesPresenterTest {
     @Test
     fun `present - handle action copy`() = runTest {
         val rawMarkdown = """
-            # Build matrix
-
-            | Component | Status |
-            | :--- | ---: |
-            | Parser | Ready |
-
-                keep indentation
+            **Strong release ready**
+            Visit https://example.org/docs
+            Owner @alice:example.org
+            - First item
+            - Second item
+            > quoted source
+            `inline code`
         """.trimIndent()
         val clipboardHelper = FakeClipboardHelper()
         val event = aMessageEvent(content = aTimelineItemTextContent(body = rawMarkdown))

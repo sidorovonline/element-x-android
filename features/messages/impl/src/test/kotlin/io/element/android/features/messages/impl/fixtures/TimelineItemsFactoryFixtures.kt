@@ -26,9 +26,12 @@ import io.element.android.features.messages.impl.timeline.factories.event.Timeli
 import io.element.android.features.messages.impl.timeline.factories.virtual.TimelineItemDaySeparatorFactory
 import io.element.android.features.messages.impl.timeline.factories.virtual.TimelineItemVirtualFactory
 import io.element.android.features.messages.impl.timeline.groups.TimelineItemGrouper
+import io.element.android.features.messages.impl.timeline.markdown.DefaultIncomingMarkdownCompatibilityFormatter
 import io.element.android.features.messages.impl.timeline.markdown.DefaultIncomingMarkdownParser
+import io.element.android.features.messages.impl.timeline.markdown.IncomingMarkdownCompatibilityFormatter
 import io.element.android.features.messages.impl.timeline.markdown.IncomingMarkdownParser
 import io.element.android.features.messages.impl.utils.FakeTextPillificationHelper
+import io.element.android.features.messages.impl.utils.TextPillificationHelper
 import io.element.android.features.messages.test.timeline.FakeHtmlConverterProvider
 import io.element.android.features.poll.test.pollcontent.FakePollContentStateFactory
 import io.element.android.libraries.androidutils.filesize.FakeFileSizeFormatter
@@ -55,15 +58,19 @@ internal fun aTimelineItemContentFactory(
     timelineEventFormatter: TimelineEventFormatter = aTimelineEventFormatter(),
     matrixClient: FakeMatrixClient = FakeMatrixClient(),
     incomingMarkdownParser: IncomingMarkdownParser = DefaultIncomingMarkdownParser(),
+    textPillificationHelper: TextPillificationHelper = FakeTextPillificationHelper(),
+    incomingMarkdownCompatibilityFormatter: IncomingMarkdownCompatibilityFormatter =
+        DefaultIncomingMarkdownCompatibilityFormatter(textPillificationHelper),
 ): TimelineItemContentFactory = TimelineItemContentFactory(
     messageFactory = TimelineItemContentMessageFactory(
         fileSizeFormatter = FakeFileSizeFormatter(),
         fileExtensionExtractor = FileExtensionExtractorWithoutValidation(),
         htmlConverterProvider = FakeHtmlConverterProvider(),
         permalinkParser = FakePermalinkParser(),
-        textPillificationHelper = FakeTextPillificationHelper(),
+        textPillificationHelper = textPillificationHelper,
     ),
     incomingMarkdownParser = incomingMarkdownParser,
+    incomingMarkdownCompatibilityFormatter = incomingMarkdownCompatibilityFormatter,
     redactedMessageFactory = TimelineItemContentRedactedFactory(),
     stickerFactory = TimelineItemContentStickerFactory(
         fileSizeFormatter = FakeFileSizeFormatter(),

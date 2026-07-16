@@ -7,6 +7,14 @@
 
 package io.element.android.features.messages.impl.timeline.components.event
 
+import android.graphics.Typeface
+import android.text.Layout
+import android.text.Spannable
+import android.text.SpannableStringBuilder
+import android.text.SpannedString
+import android.text.style.AlignmentSpan
+import android.text.style.StyleSpan
+import android.text.style.URLSpan
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -23,7 +31,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -59,11 +70,18 @@ import io.element.android.features.messages.impl.timeline.markdown.IncomingMarkd
 import io.element.android.features.messages.impl.timeline.markdown.IncomingMarkdownTableCell
 import io.element.android.features.messages.impl.timeline.markdown.IncomingMarkdownTableRow
 import io.element.android.libraries.designsystem.theme.components.Text
+import io.element.android.libraries.textcomposer.ElementRichTextEditorStyle
+import io.element.android.libraries.textcomposer.mentions.LocalMentionSpanUpdater
+import io.element.android.libraries.textcomposer.mentions.MentionSpan
+import io.element.android.wysiwyg.compose.EditorStyledText
 import io.element.android.wysiwyg.link.Link
+import io.element.android.wysiwyg.view.spans.InlineCodeSpan
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 
 internal const val INCOMING_MARKDOWN_TABLE_TAG = "incoming_markdown_table"
+internal const val INCOMING_MARKDOWN_INLINE_TAG = "incoming_markdown_inline"
+internal const val INCOMING_MARKDOWN_COMPOSE_INLINE_TAG = "incoming_markdown_compose_inline"
 
 @Composable
 fun IncomingMarkdownView(
@@ -71,7 +89,7 @@ fun IncomingMarkdownView(
     rawBody: String,
     onLinkClick: (Link) -> Unit,
     onLinkLongClick: (Link) -> Unit,
-    onLongClick: (() -> Unit)?,
+    onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     onContentLayoutChange: (ContentAvoidingLayoutData) -> Unit = {},
 ) {
@@ -129,7 +147,6 @@ private fun MarkdownBlock(
             style = headingStyle(block.level),
             onLinkClick = onLinkClick,
             onLinkLongClick = onLinkLongClick,
-            onLongClick = onLongClick,
             modifier = Modifier.semantics { heading() },
         )
         is IncomingMarkdownBlock.Paragraph -> MarkdownInlineText(
@@ -137,7 +154,6 @@ private fun MarkdownBlock(
             style = ElementTheme.typography.fontBodyLgRegular,
             onLinkClick = onLinkClick,
             onLinkLongClick = onLinkLongClick,
-            onLongClick = onLongClick,
         )
         is IncomingMarkdownBlock.Table -> MarkdownTable(
             table = block,
@@ -185,7 +201,6 @@ private fun MarkdownBlock(
             style = ElementTheme.typography.fontBodyLgRegular,
             onLinkClick = onLinkClick,
             onLinkLongClick = onLinkLongClick,
-            onLongClick = onLongClick,
         )
     }
 }
@@ -270,6 +285,13 @@ private fun MarkdownTableCell(
     onLongClick: (() -> Unit)?,
 ) {
     val isHeader = cell?.header == true
+    val content = cell?.content ?: IncomingMarkdownInlineContent("", persistentListOf())
+    val style = if (isHeader) ElementTheme.typography.fontBodyMdMedium else ElementTheme.typography.fontBodyMdRegular
+    val textAlign = when (cell?.alignment) {
+        IncomingMarkdownTableAlignment.CENTER -> TextAlign.Center
+        IncomingMarkdownTableAlignment.END -> TextAlign.End
+        IncomingMarkdownTableAlignment.START, null -> TextAlign.Start
+    }
     Box(
         modifier = Modifier
             .width(width)
@@ -278,39 +300,31 @@ private fun MarkdownTableCell(
             .border(0.5.dp, ElementTheme.colors.separatorPrimary)
             .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {
-        MarkdownInlineText(
-            content = cell?.content ?: IncomingMarkdownInlineContent("", persistentListOf()),
-            style = if (isHeader) ElementTheme.typography.fontBodyMdMedium else ElementTheme.typography.fontBodyMdRegular,
-            textAlign = when (cell?.alignment) {
-                IncomingMarkdownTableAlignment.CENTER -> TextAlign.Center
-                IncomingMarkdownTableAlignment.END -> TextAlign.End
-                IncomingMarkdownTableAlignment.START, null -> TextAlign.Start
-            },
-            onLinkClick = onLinkClick,
-            onLinkLongClick = onLinkLongClick,
-            onLongClick = onLongClick,
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
-
-private fun IncomingMarkdownBlock.Table.columnWidths(columnCount: Int, availableWidth: Dp): List<Dp> {
-    val desiredWidths = List(columnCount) { columnIndex ->
-        val longestLine = rows.maxOf { row ->
-            row.cells.getOrNull(columnIndex)?.content?.text?.lineSequence()?.maxOfOrNull(String::length) ?: 0
+        if (content.spans.any { it.style is IncomingMarkdownInlineStyle.Mention }) {
+            MarkdownInlineText(
+                content = content,
+                style = style,
+                textAlign = textAlign,
+                onLinkClick = onLinkClick,
+                onLinkLongClick = onLinkLongClick,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        } else {
+            MarkdownComposeInlineText(
+                content = content,
+                style = style,
+                textAlign = textAlign,
+                onLinkClick = onLinkClick,
+                onLinkLongClick = onLinkLongClick,
+                onLongClick = onLongClick,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
-        (longestLine * APPROXIMATE_CHARACTER_WIDTH_DP + CELL_HORIZONTAL_PADDING_DP)
-            .coerceIn(MIN_COLUMN_WIDTH_DP, MAX_COLUMN_WIDTH_DP)
-            .dp
     }
-    val desiredTableWidth = desiredWidths.fold(0.dp, Dp::plus)
-    if (desiredTableWidth >= availableWidth) return desiredWidths
-    val extraPerColumn = (availableWidth - desiredTableWidth) / columnCount
-    return desiredWidths.map { it + extraPerColumn }
 }
 
 @Composable
-private fun MarkdownInlineText(
+private fun MarkdownComposeInlineText(
     content: IncomingMarkdownInlineContent,
     style: TextStyle,
     onLinkClick: (Link) -> Unit,
@@ -355,6 +369,7 @@ private fun MarkdownInlineText(
                             end = span.endExclusive,
                         )
                     }
+                    is IncomingMarkdownInlineStyle.Mention -> Unit
                 }
             }
         }
@@ -378,7 +393,9 @@ private fun MarkdownInlineText(
     }
     Text(
         text = annotatedText,
-        modifier = modifier.then(linkModifier),
+        modifier = modifier
+            .then(linkModifier)
+            .testTag(INCOMING_MARKDOWN_COMPOSE_INLINE_TAG),
         color = ElementTheme.colors.textPrimary,
         style = style,
         textAlign = textAlign,
@@ -397,8 +414,76 @@ private fun AnnotatedString.linkAt(position: Offset, layoutResult: TextLayoutRes
     )
 }
 
-private const val LINK_ANNOTATION_TAG = "markdown_link"
+private fun IncomingMarkdownBlock.Table.columnWidths(columnCount: Int, availableWidth: Dp): List<Dp> {
+    val desiredWidths = List(columnCount) { columnIndex ->
+        val longestLine = rows.maxOf { row ->
+            row.cells.getOrNull(columnIndex)?.content?.text?.lineSequence()?.maxOfOrNull(String::length) ?: 0
+        }
+        (longestLine * APPROXIMATE_CHARACTER_WIDTH_DP + CELL_HORIZONTAL_PADDING_DP)
+            .coerceIn(MIN_COLUMN_WIDTH_DP, MAX_COLUMN_WIDTH_DP)
+            .dp
+    }
+    val desiredTableWidth = desiredWidths.fold(0.dp, Dp::plus)
+    if (desiredTableWidth >= availableWidth) return desiredWidths
+    val extraPerColumn = (availableWidth - desiredTableWidth) / columnCount
+    return desiredWidths.map { it + extraPerColumn }
+}
+
+@Composable
+private fun MarkdownInlineText(
+    content: IncomingMarkdownInlineContent,
+    style: TextStyle,
+    onLinkClick: (Link) -> Unit,
+    onLinkLongClick: (Link) -> Unit,
+    modifier: Modifier = Modifier,
+    textAlign: TextAlign = TextAlign.Start,
+) {
+    val mentionSpanUpdater = LocalMentionSpanUpdater.current
+    val styledText = remember(content, textAlign) { content.toSpannable(textAlign) }
+    val resolvedText = mentionSpanUpdater.rememberMentionSpans(styledText)
+    CompositionLocalProvider(
+        LocalContentColor provides ElementTheme.colors.textPrimary,
+        LocalTextStyle provides style,
+    ) {
+        Box(modifier.testTag(INCOMING_MARKDOWN_INLINE_TAG)) {
+            EditorStyledText(
+                text = SpannedString.valueOf(resolvedText),
+                modifier = Modifier.fillMaxWidth(),
+                onLinkClickedListener = onLinkClick,
+                onLinkLongClickedListener = onLinkLongClick,
+                style = ElementRichTextEditorStyle.textStyle(),
+                releaseOnDetach = false,
+            )
+        }
+    }
+}
+
+private fun IncomingMarkdownInlineContent.toSpannable(textAlign: TextAlign): SpannableStringBuilder {
+    return SpannableStringBuilder(text).apply {
+        spans.forEach { span ->
+            if (span.start !in 0..length || span.endExclusive !in span.start..length || span.start == span.endExclusive) return@forEach
+            val androidSpan = when (val inlineStyle = span.style) {
+                IncomingMarkdownInlineStyle.Strong -> StyleSpan(Typeface.BOLD)
+                IncomingMarkdownInlineStyle.Emphasis -> StyleSpan(Typeface.ITALIC)
+                IncomingMarkdownInlineStyle.Code -> InlineCodeSpan()
+                is IncomingMarkdownInlineStyle.Link -> URLSpan(inlineStyle.destination)
+                is IncomingMarkdownInlineStyle.Mention -> MentionSpan(inlineStyle.type)
+            }
+            setSpan(androidSpan, span.start, span.endExclusive, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        val alignment = when (textAlign) {
+            TextAlign.Center -> Layout.Alignment.ALIGN_CENTER
+            TextAlign.End, TextAlign.Right -> Layout.Alignment.ALIGN_OPPOSITE
+            else -> null
+        }
+        if (alignment != null && isNotEmpty()) {
+            setSpan(AlignmentSpan.Standard(alignment), 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+    }
+}
+
 private const val APPROXIMATE_CHARACTER_WIDTH_DP = 7
 private const val CELL_HORIZONTAL_PADDING_DP = 24
 private const val MIN_COLUMN_WIDTH_DP = 112
 private const val MAX_COLUMN_WIDTH_DP = 220
+private const val LINK_ANNOTATION_TAG = "markdown_link"

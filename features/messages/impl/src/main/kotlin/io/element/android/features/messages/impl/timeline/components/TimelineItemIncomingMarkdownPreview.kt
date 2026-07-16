@@ -7,19 +7,33 @@
 
 package io.element.android.features.messages.impl.timeline.components
 
+import android.text.Spannable
+import android.text.SpannableStringBuilder
+import android.text.style.URLSpan
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.element.android.features.messages.impl.timeline.aTimelineItemEvent
+import io.element.android.features.messages.impl.timeline.markdown.DefaultIncomingMarkdownCompatibilityFormatter
 import io.element.android.features.messages.impl.timeline.markdown.DefaultIncomingMarkdownParser
 import io.element.android.features.messages.impl.timeline.model.TimelineItemGroupPosition
 import io.element.android.features.messages.impl.timeline.model.event.aTimelineItemTextContent
+import io.element.android.features.messages.impl.utils.TextPillificationHelper
 import io.element.android.libraries.designsystem.preview.ElementPreview
 import io.element.android.libraries.designsystem.preview.PreviewsDayNight
+import io.element.android.libraries.matrix.api.core.UserId
+import io.element.android.libraries.textcomposer.mentions.LocalMentionSpanUpdater
+import io.element.android.libraries.textcomposer.mentions.MentionSpan
+import io.element.android.libraries.textcomposer.mentions.MentionSpanFormatter
+import io.element.android.libraries.textcomposer.mentions.MentionSpanTheme
+import io.element.android.libraries.textcomposer.mentions.MentionSpanUpdater
+import io.element.android.libraries.textcomposer.mentions.MentionType
+import io.element.android.libraries.textcomposer.mentions.getMentionSpans
 
 @PreviewsDayNight
 @Composable
@@ -61,6 +75,38 @@ internal fun TimelineItemIncomingMarkdownFallbackPreview() = ElementPreview {
     )
 }
 
+@PreviewsDayNight
+@Composable
+internal fun TimelineItemIncomingMarkdownStrongCompatibilityPreview() = ElementPreview {
+    val markdown = remember {
+        val parsed = checkNotNull(DefaultIncomingMarkdownParser().parse(STRONG_COMPATIBILITY_PREVIEW_BODY))
+        DefaultIncomingMarkdownCompatibilityFormatter(PreviewTextPillificationHelper).format(parsed)
+    }
+    val mentionSpanTheme = remember { MentionSpanTheme(UserId("@me:example.org")) }
+    mentionSpanTheme.updateStyles()
+    val mentionSpanUpdater = remember { PreviewMentionSpanUpdater(mentionSpanTheme) }
+    CompositionLocalProvider(LocalMentionSpanUpdater provides mentionSpanUpdater) {
+        Column {
+            ATimelineItemEventRow(
+                event = aTimelineItemEvent(
+                    senderDisplayName = "Markdown sender",
+                    isMine = false,
+                    content = aTimelineItemTextContent(body = STRONG_COMPATIBILITY_PREVIEW_BODY).copy(incomingMarkdown = markdown),
+                    groupPosition = TimelineItemGroupPosition.First,
+                ),
+            )
+            Spacer(Modifier.height(24.dp))
+            ATimelineItemEventRow(
+                event = aTimelineItemEvent(
+                    isMine = true,
+                    content = aTimelineItemTextContent(body = STRONG_COMPATIBILITY_PREVIEW_BODY),
+                    groupPosition = TimelineItemGroupPosition.First,
+                ),
+            )
+        }
+    }
+}
+
 private val MARKDOWN_PREVIEW_BODY = """
     # Build matrix
 
@@ -81,3 +127,50 @@ private val OVER_LIMIT_TABLE_PREVIEW_BODY = buildString {
     appendLine((1..21).joinToString(prefix = "| ", separator = " | ", postfix = " |") { "---" })
     append((1..21).joinToString(prefix = "| ", separator = " | ", postfix = " |") { "Value $it" })
 }
+
+private val STRONG_COMPATIBILITY_PREVIEW_BODY = """
+    **Strong release ready**
+    Visit https://example.org/docs
+    Owner @alice:example.org
+""".trimIndent()
+
+private object PreviewTextPillificationHelper : TextPillificationHelper {
+    override fun pillify(text: CharSequence, pillifyPermalinks: Boolean): CharSequence {
+        val result = SpannableStringBuilder(text)
+        val start = result.indexOf(PREVIEW_MENTION)
+        if (start < 0) return result
+        result.replace(start, start + PREVIEW_MENTION.length, "@ ")
+        result.setSpan(
+            MentionSpan(MentionType.User(UserId(PREVIEW_MENTION))),
+            start,
+            start + 1,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+        result.setSpan(
+            URLSpan("https://matrix.to/#/$PREVIEW_MENTION"),
+            start,
+            start + 1,
+            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+        return result
+    }
+}
+
+private class PreviewMentionSpanUpdater(private val theme: MentionSpanTheme) : MentionSpanUpdater {
+    override fun updateMentionSpans(text: CharSequence): CharSequence {
+        text.getMentionSpans().forEach { span ->
+            span.updateTheme(theme)
+            span.updateDisplayText(
+                object : MentionSpanFormatter {
+                    override fun formatDisplayText(mentionType: MentionType): CharSequence = "Alice"
+                }
+            )
+        }
+        return text
+    }
+
+    @Composable
+    override fun rememberMentionSpans(text: CharSequence): CharSequence = remember(text) { updateMentionSpans(text) }
+}
+
+private const val PREVIEW_MENTION = "@alice:example.org"
