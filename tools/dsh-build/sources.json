@@ -1,0 +1,10 @@
+{
+  "matrix-rust-sdk": {
+    "url": "git@github.com:sidorovonline/matrix-rust-sdk.git",
+    "commit": "7a16a367b2fd94b890d79d0b6a085efa1df1675d"
+  },
+  "matrix-rust-components-kotlin": {
+    "url": "git@github.com:sidorovonline/matrix-rust-components-kotlin.git",
+    "commit": "47aac152ec5c796eedb6e5151b6433f912477f32"
+  }
+}
