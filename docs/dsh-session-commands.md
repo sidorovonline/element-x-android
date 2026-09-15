@@ -33,7 +33,7 @@ Commands are generic descriptors (`name`, `description`, optional `argument_hint
 
 This fork already requires a locally built Rust SDK AAR. This feature additionally requires `Client.verify_device_signature` and the bounded joined-room `get_room_state_events`, exposed through Kotlin. The matching source checkpoints are:
 
-- matrix-rust-sdk: `01d4383` (verified-device signatures and bounded room-state discovery)
+- matrix-rust-sdk: `7a16a36` (verified-device signatures, bounded room-state discovery, and subscribed-room service state)
 - matrix-rust-components-kotlin: `47aac15` (matching generated UniFFI bindings)
 
 Build the matching native library and generated Kotlin bindings together, then place the resulting AAR at `libraries/rustsdk/matrix-rust-sdk.aar` (ignored). Never commit binaries or signing/authentication material. Use the existing Docker-only Android development stack; do not install host Android/JDK tooling. Run `:app:assembleFdroidDebug` and the focused DSH/MyClaw discovery tests. Package identity and signing configuration are unchanged.
