@@ -27,6 +27,7 @@ import io.element.android.features.messages.impl.timeline.model.event.TimelineIt
 import io.element.android.features.messages.impl.timeline.model.event.TimelineItemStateContent
 import io.element.android.features.messages.impl.timeline.model.event.TimelineItemStickerContent
 import io.element.android.features.messages.impl.timeline.model.event.TimelineItemTextBasedContent
+import io.element.android.features.messages.impl.timeline.model.event.TimelineItemTextContent
 import io.element.android.features.messages.impl.timeline.model.event.TimelineItemUnknownContent
 import io.element.android.features.messages.impl.timeline.model.event.TimelineItemVideoContent
 import io.element.android.features.messages.impl.timeline.model.event.TimelineItemVoiceContent
@@ -45,6 +46,7 @@ fun TimelineItemEventContentView(
     onLinkClick: (Link) -> Unit,
     onLinkLongClick: (Link) -> Unit,
     eventSink: (TimelineEvent.TimelineItemEvent) -> Unit,
+    renderIncomingMarkdown: Boolean = false,
     modifier: Modifier = Modifier,
     onContentLayoutChange: (ContentAvoidingLayoutData) -> Unit = {},
 ) {
@@ -60,13 +62,28 @@ fun TimelineItemEventContentView(
             onContentLayoutChange = onContentLayoutChange,
             modifier = modifier
         )
-        is TimelineItemTextBasedContent -> TimelineItemTextView(
-            content = content,
-            modifier = modifier,
-            onLinkClick = onLinkClick,
-            onLinkLongClick = onLinkLongClick,
-            onContentLayoutChange = onContentLayoutChange
-        )
+        is TimelineItemTextBasedContent -> {
+            val markdown = (content as? TimelineItemTextContent)?.incomingMarkdown
+            if (renderIncomingMarkdown && markdown != null) {
+                IncomingMarkdownView(
+                    document = markdown,
+                    rawBody = content.body,
+                    onLinkClick = onLinkClick,
+                    onLinkLongClick = onLinkLongClick,
+                    onLongClick = onLongClick,
+                    modifier = modifier,
+                    onContentLayoutChange = onContentLayoutChange,
+                )
+            } else {
+                TimelineItemTextView(
+                    content = content,
+                    modifier = modifier,
+                    onLinkClick = onLinkClick,
+                    onLinkLongClick = onLinkLongClick,
+                    onContentLayoutChange = onContentLayoutChange
+                )
+            }
+        }
         is TimelineItemUnknownContent -> TimelineItemUnknownView(
             content = content,
             onContentLayoutChange = onContentLayoutChange,

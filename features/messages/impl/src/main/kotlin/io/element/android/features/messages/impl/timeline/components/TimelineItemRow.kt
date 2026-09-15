@@ -84,6 +84,7 @@ internal fun TimelineItemRow(
                 onLinkClick = onLinkClick,
                 onLinkLongClick = onLinkLongClick,
                 eventSink = eventSink,
+                renderIncomingMarkdown = shouldRenderIncomingMarkdown(event.isMine, timelineMode),
                 modifier = contentModifier,
                 onContentLayoutChange = onContentLayoutChange
             )
@@ -210,6 +211,10 @@ internal fun TimelineItemRow(
             }
         }
     }
+}
+
+internal fun shouldRenderIncomingMarkdown(isMine: Boolean, timelineMode: Timeline.Mode): Boolean {
+    return !isMine && (timelineMode is Timeline.Mode.Live || timelineMode is Timeline.Mode.FocusedOnEvent)
 }
 
 @Suppress("ModifierComposable")

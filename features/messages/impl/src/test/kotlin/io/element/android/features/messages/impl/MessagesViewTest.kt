@@ -402,12 +402,21 @@ class MessagesViewTest : RobolectricTest() {
 
     @Test
     fun `selecting select text action opens text selection dialog`() = runAndroidComposeUiTest {
+        val rawMarkdown = """
+            **Strong release ready**
+            Visit https://example.org/docs
+            Owner @alice:example.org
+            - First item
+            - Second item
+            > quoted source
+            `inline code`
+        """.trimIndent()
         val eventsRecorder = EventsRecorder<MessagesEvent>(expectEvents = false)
         val state = aMessagesState(
             timelineState = aTimelineState(
                 timelineItems = aTimelineItemList(
                     aTimelineItemTextContent(
-                        body = "Alpha bravo charlie delta echo",
+                        body = rawMarkdown,
                     )
                 )
             ),
@@ -432,6 +441,7 @@ class MessagesViewTest : RobolectricTest() {
         clickOn(CommonStrings.action_select_text)
         mainClock.advanceTimeBy(milliseconds = 1_000)
         onNodeWithTag("message_text_selection_dialog").assertExists()
+        onNodeWithText(rawMarkdown, useUnmergedTree = true).assertExists()
         eventsRecorder.assertEmpty()
     }
 

@@ -68,6 +68,8 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.datetime)
     implementation(libs.jsoup)
+    implementation(libs.commonmark.core)
+    implementation(libs.commonmark.gfm.tables)
     implementation(libs.serialization.json)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.constraintlayout.compose)

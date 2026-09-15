@@ -299,14 +299,23 @@ class MessagesPresenterTest {
 
     @Test
     fun `present - handle action copy`() = runTest {
+        val rawMarkdown = """
+            **Strong release ready**
+            Visit https://example.org/docs
+            Owner @alice:example.org
+            - First item
+            - Second item
+            > quoted source
+            `inline code`
+        """.trimIndent()
         val clipboardHelper = FakeClipboardHelper()
-        val event = aMessageEvent()
+        val event = aMessageEvent(content = aTimelineItemTextContent(body = rawMarkdown))
         val presenter = createMessagesPresenter(clipboardHelper = clipboardHelper)
         presenter.testWithLifecycleOwner {
             val initialState = awaitItem()
             initialState.eventSink(MessagesEvent.HandleAction(TimelineItemAction.CopyText, event))
             skipItems(2)
-            assertThat(clipboardHelper.clipboardContents).isEqualTo((event.content as TimelineItemTextContent).body)
+            assertThat(clipboardHelper.clipboardContents).isEqualTo(rawMarkdown)
         }
     }
 
