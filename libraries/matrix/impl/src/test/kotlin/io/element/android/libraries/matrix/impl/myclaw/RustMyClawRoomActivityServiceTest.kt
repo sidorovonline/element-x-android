@@ -14,6 +14,7 @@ import io.element.android.libraries.matrix.api.core.UserId
 import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivityState
 import io.element.android.libraries.matrix.api.room.BaseRoom
 import io.element.android.libraries.matrix.api.to_device.CustomToDeviceEvent
+import io.element.android.libraries.matrix.api.user.MatrixUser
 import io.element.android.libraries.matrix.test.A_DEVICE_ID
 import io.element.android.libraries.matrix.test.A_ROOM_ID
 import io.element.android.libraries.matrix.test.A_SESSION_ID
@@ -71,7 +72,7 @@ class RustMyClawRoomActivityServiceTest {
         toDeviceEvents.emit(
             aCustomToDeviceEvent(
                 eventType = RustMyClawRoomActivityService.RESPONSE_TYPE,
-                content = responseContent(txnId = "wrong-txn", state = "typing"),
+                content = responseContent(txnId = "wrong-txn", state = "working"),
             )
         )
         runCurrent()
@@ -80,12 +81,13 @@ class RustMyClawRoomActivityServiceTest {
         toDeviceEvents.emit(
             aCustomToDeviceEvent(
                 eventType = RustMyClawRoomActivityService.RESPONSE_TYPE,
-                content = responseContent(txnId = txnId, state = "typing"),
+                content = responseContent(txnId = txnId, state = "working"),
             )
         )
+        advanceTimeBy(2)
         runCurrent()
 
-        assertThat(service.activities.value[A_ROOM_ID]?.state).isEqualTo(MyClawRoomActivityState.TYPING)
+        assertThat(service.activities.value[A_ROOM_ID]?.state).isEqualTo(MyClawRoomActivityState.WORKING)
     }
 
     @Test
@@ -105,6 +107,7 @@ class RustMyClawRoomActivityServiceTest {
                 content = updateContent(state = "working", expiresAt = "1970-01-01T00:00:02Z"),
             )
         )
+        advanceTimeBy(2)
         runCurrent()
         assertThat(service.activities.value[A_ROOM_ID]?.state).isEqualTo(MyClawRoomActivityState.WORKING)
 
@@ -125,11 +128,12 @@ class RustMyClawRoomActivityServiceTest {
         toDeviceEvents.emit(
             aCustomToDeviceEvent(
                 eventType = RustMyClawRoomActivityService.UPDATE_TYPE,
-                content = updateContent(state = "typing"),
+                content = updateContent(state = "working"),
             )
         )
+        advanceTimeBy(2)
         runCurrent()
-        assertThat(service.activities.value[A_ROOM_ID]?.state).isEqualTo(MyClawRoomActivityState.TYPING)
+        assertThat(service.activities.value[A_ROOM_ID]?.state).isEqualTo(MyClawRoomActivityState.WORKING)
 
         toDeviceEvents.emit(
             aCustomToDeviceEvent(
@@ -182,6 +186,136 @@ class RustMyClawRoomActivityServiceTest {
     }
 
     @Test
+    fun `working retries Matrix profile resolution instead of using payload machine name or being suppressed`() = runTest {
+        val toDeviceEvents = MutableSharedFlow<CustomToDeviceEvent>(extraBufferCapacity = 10)
+        var profileRequestCount = 0
+        val service = createService(
+            toDeviceEvents = toDeviceEvents,
+            room = aMyClawDmRoom(botDisplayName = null),
+            getProfile = { userId ->
+                profileRequestCount += 1
+                if (profileRequestCount >= 3) {
+                    Result.success(MatrixUser(userId = userId, displayName = "Windows"))
+                } else {
+                    Result.failure(IllegalStateException("Transient profile lookup failure"))
+                }
+            },
+        )
+        runCurrent()
+
+        service.requestActivity(A_ROOM_ID)
+        toDeviceEvents.emit(
+            aCustomToDeviceEvent(
+                eventType = RustMyClawRoomActivityService.UPDATE_TYPE,
+                content = updateContent(state = "working", senderDisplayName = "spark-matrix"),
+            )
+        )
+        runCurrent()
+        assertThat(service.activities.value[A_ROOM_ID]).isNull()
+
+        advanceTimeBy(1_000L)
+        runCurrent()
+
+        assertThat(service.activities.value[A_ROOM_ID]?.state).isEqualTo(MyClawRoomActivityState.WORKING)
+        assertThat(service.activities.value[A_ROOM_ID]?.senderDisplayName).isEqualTo("Windows")
+        assertThat(profileRequestCount).isAtLeast(3)
+    }
+
+    @Test
+    fun `last verified Matrix display name keeps working visible during a transient profile lookup failure`() = runTest {
+        val toDeviceEvents = MutableSharedFlow<CustomToDeviceEvent>(extraBufferCapacity = 10)
+        var memberLookupSucceeds = true
+        var directMemberHasDisplayName = true
+        val service = createService(
+            toDeviceEvents = toDeviceEvents,
+            room = FakeBaseRoom(
+                initialRoomInfo = aRoomInfo(id = A_ROOM_ID, isDm = true),
+                getUpdatedMemberResult = { userId ->
+                    if (memberLookupSucceeds) {
+                        Result.success(aRoomMember(userId = userId, displayName = "Windows"))
+                    } else {
+                        Result.failure(IllegalStateException("Transient member lookup failure"))
+                    }
+                },
+                getDirectRoomMemberResult = {
+                    aRoomMember(userId = A_BOT_USER_ID, displayName = "Windows".takeIf { directMemberHasDisplayName })
+                },
+            ),
+        )
+        runCurrent()
+
+        service.requestActivity(A_ROOM_ID)
+        memberLookupSucceeds = false
+        directMemberHasDisplayName = false
+        toDeviceEvents.emit(
+            aCustomToDeviceEvent(
+                eventType = RustMyClawRoomActivityService.UPDATE_TYPE,
+                content = updateContent(state = "working", senderDisplayName = "windows-matrix"),
+            )
+        )
+        advanceTimeBy(2)
+        runCurrent()
+
+        assertThat(service.activities.value[A_ROOM_ID]?.state).isEqualTo(MyClawRoomActivityState.WORKING)
+        assertThat(service.activities.value[A_ROOM_ID]?.senderDisplayName).isEqualTo("Windows")
+    }
+
+    @Test
+    fun `validated sender Matrix member profile wins when payload contains machine id`() = runTest {
+        val toDeviceEvents = MutableSharedFlow<CustomToDeviceEvent>(extraBufferCapacity = 10)
+        val service = createService(
+            toDeviceEvents = toDeviceEvents,
+            room = FakeBaseRoom(
+                initialRoomInfo = aRoomInfo(id = A_ROOM_ID, isDm = true),
+                getUpdatedMemberResult = { userId ->
+                    Result.success(aRoomMember(userId = userId, displayName = "Windows"))
+                },
+                getDirectRoomMemberResult = {
+                    aRoomMember(userId = A_BOT_USER_ID, displayName = "Windows")
+                },
+            ),
+        )
+        runCurrent()
+
+        service.requestActivity(A_ROOM_ID)
+        toDeviceEvents.emit(
+            aCustomToDeviceEvent(
+                eventType = RustMyClawRoomActivityService.UPDATE_TYPE,
+                content = updateContent(state = "working", senderDisplayName = "spark-matrix"),
+            )
+        )
+        advanceTimeBy(2)
+        runCurrent()
+
+        assertThat(service.activities.value[A_ROOM_ID]?.state).isEqualTo(MyClawRoomActivityState.WORKING)
+        assertThat(service.activities.value[A_ROOM_ID]?.senderDisplayName).isEqualTo("Windows")
+    }
+
+    @Test
+    fun `validated sender global Matrix profile keeps working visible when room member profile is unavailable`() = runTest {
+        val toDeviceEvents = MutableSharedFlow<CustomToDeviceEvent>(extraBufferCapacity = 10)
+        val service = createService(
+            toDeviceEvents = toDeviceEvents,
+            room = aMyClawDmRoom(botDisplayName = null),
+            getProfile = { userId -> Result.success(MatrixUser(userId = userId, displayName = "Spark")) },
+        )
+        runCurrent()
+
+        service.requestActivity(A_ROOM_ID)
+        toDeviceEvents.emit(
+            aCustomToDeviceEvent(
+                eventType = RustMyClawRoomActivityService.UPDATE_TYPE,
+                content = updateContent(state = "working", senderDisplayName = "windows-matrix"),
+            )
+        )
+        advanceTimeBy(2)
+        runCurrent()
+
+        assertThat(service.activities.value[A_ROOM_ID]?.state).isEqualTo(MyClawRoomActivityState.WORKING)
+        assertThat(service.activities.value[A_ROOM_ID]?.senderDisplayName).isEqualTo("Spark")
+    }
+
+    @Test
     fun `unsubscribe prunes candidate validation and clears activity`() = runTest {
         val toDeviceEvents = MutableSharedFlow<CustomToDeviceEvent>(extraBufferCapacity = 10)
         val service = createService(toDeviceEvents = toDeviceEvents)
@@ -194,6 +328,7 @@ class RustMyClawRoomActivityServiceTest {
                 content = updateContent(state = "working"),
             )
         )
+        advanceTimeBy(2)
         runCurrent()
         assertThat(service.activities.value[A_ROOM_ID]?.state).isEqualTo(MyClawRoomActivityState.WORKING)
 
@@ -204,7 +339,7 @@ class RustMyClawRoomActivityServiceTest {
         toDeviceEvents.emit(
             aCustomToDeviceEvent(
                 eventType = RustMyClawRoomActivityService.UPDATE_TYPE,
-                content = updateContent(state = "typing"),
+                content = updateContent(state = "working"),
             )
         )
         runCurrent()
@@ -268,6 +403,7 @@ class RustMyClawRoomActivityServiceTest {
         toDeviceEvents: MutableSharedFlow<CustomToDeviceEvent> = MutableSharedFlow(extraBufferCapacity = 10),
         sentEvents: MutableList<SentCustomToDevice> = mutableListOf(),
         room: BaseRoom = aMyClawDmRoom(),
+        getProfile: suspend (UserId) -> Result<MatrixUser> = { Result.failure(IllegalArgumentException("Unknown profile")) },
     ): RustMyClawRoomActivityService {
         return RustMyClawRoomActivityService(
             sessionId = A_SESSION_ID,
@@ -276,6 +412,7 @@ class RustMyClawRoomActivityServiceTest {
             dispatcher = StandardTestDispatcher(testScheduler),
             clock = clock,
             getRoom = { roomId -> room.takeIf { roomId == A_ROOM_ID } },
+            getProfile = getProfile,
             sendCustomToDevice = { eventType, userId, deviceIds, content, txnId ->
                 sentEvents += SentCustomToDevice(eventType, userId, deviceIds, content, txnId)
                 Result.success(Unit)
@@ -284,11 +421,18 @@ class RustMyClawRoomActivityServiceTest {
         )
     }
 
-    private fun aMyClawDmRoom(): FakeBaseRoom {
+    private fun aMyClawDmRoom(botDisplayName: String? = "Windows"): FakeBaseRoom {
         return FakeBaseRoom(
             initialRoomInfo = aRoomInfo(id = A_ROOM_ID, isDm = true),
+            getUpdatedMemberResult = { userId ->
+                if (userId == A_BOT_USER_ID) {
+                    Result.success(aRoomMember(userId = userId, displayName = botDisplayName))
+                } else {
+                    Result.failure(IllegalArgumentException("Unknown room member"))
+                }
+            },
             getDirectRoomMemberResult = {
-                aRoomMember(userId = A_BOT_USER_ID)
+                aRoomMember(userId = A_BOT_USER_ID, displayName = botDisplayName)
             },
         )
     }
@@ -316,13 +460,16 @@ class RustMyClawRoomActivityServiceTest {
     private fun updateContent(
         state: String,
         expiresAt: String? = "2026-06-29T12:05:00Z",
+        senderDisplayName: String? = "Windows",
     ): String {
         val content = buildMap {
             put("version", JsonPrimitive(1))
             put("room_id", JsonPrimitive(A_ROOM_ID.value))
             put("session_id", JsonPrimitive("sess_123"))
             put("state", JsonPrimitive(state))
-            put("sender_display_name", JsonPrimitive("Spark"))
+            senderDisplayName?.let {
+                put("sender_display_name", JsonPrimitive(it))
+            }
             put("updated_at", JsonPrimitive("1970-01-01T00:00:01Z"))
             expiresAt?.let {
                 put("expires_at", JsonPrimitive(it))

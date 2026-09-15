@@ -110,7 +110,6 @@ class PinnedMessagesListPresenter(
                     typingNotificationState = TypingNotificationState(
                         renderTypingNotifications = false,
                         typingMembers = persistentListOf(),
-                        typingDisplayName = null,
                         workingDisplayName = null,
                         reserveSpace = false,
                     ),

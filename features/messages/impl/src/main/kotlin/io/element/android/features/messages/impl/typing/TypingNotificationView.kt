@@ -53,7 +53,6 @@ fun TypingNotificationView(
 ) {
     val displayNotifications = (
         state.typingMembers.isNotEmpty() ||
-            state.typingDisplayName != null ||
             state.workingDisplayName != null
         ) && state.renderTypingNotifications
 
@@ -81,7 +80,6 @@ fun TypingNotificationView(
     ) {
         val typingNotificationText = computeTypingNotificationText(
             typingMembers = state.typingMembers,
-            typingDisplayName = state.typingDisplayName,
             workingDisplayName = state.workingDisplayName,
         )
         Box(contentAlignment = Alignment.BottomStart) {
@@ -109,7 +107,6 @@ fun TypingNotificationView(
 @Composable
 private fun computeTypingNotificationText(
     typingMembers: ImmutableList<TypingRoomMember>,
-    typingDisplayName: String?,
     workingDisplayName: String?,
 ): AnnotatedString {
     // Remember the last value to avoid empty typing messages while animating
@@ -121,16 +118,6 @@ private fun computeTypingNotificationText(
             append(parts[0])
             withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
                 append(workingDisplayName)
-            }
-            append(parts[1])
-        }
-    } else if (typingDisplayName != null) {
-        val tmpString = stringResource(CommonStrings.screen_room_myclaw_typing, "<>")
-        val parts = tmpString.split("<>")
-        result = buildAnnotatedString {
-            append(parts[0])
-            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                append(typingDisplayName)
             }
             append(parts[1])
         }

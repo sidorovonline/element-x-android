@@ -67,23 +67,18 @@ class TypingNotificationStateProvider : PreviewParameterProvider<TypingNotificat
                 reserveSpace = true,
             ),
             aTypingNotificationState(
-                typingDisplayName = "Spark",
-            ),
-            aTypingNotificationState(
-                workingDisplayName = "Spark",
+                workingDisplayName = "Windows",
             ),
         )
 }
 
 internal fun aTypingNotificationState(
     typingMembers: List<TypingRoomMember> = emptyList(),
-    typingDisplayName: String? = null,
     workingDisplayName: String? = null,
     reserveSpace: Boolean = false,
 ) = TypingNotificationState(
     renderTypingNotifications = true,
     typingMembers = typingMembers.toImmutableList(),
-    typingDisplayName = typingDisplayName,
     workingDisplayName = workingDisplayName,
     reserveSpace = reserveSpace,
 )

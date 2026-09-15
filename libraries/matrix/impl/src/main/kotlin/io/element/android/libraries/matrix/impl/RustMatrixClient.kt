@@ -265,6 +265,7 @@ class RustMatrixClient(
         dispatcher = sessionDispatcher,
         clock = clock,
         getRoom = ::getRoom,
+        getProfile = ::getProfile,
         sendCustomToDevice = ::sendCustomToDevice,
         customToDeviceEvents = ::customToDeviceEvents,
     )

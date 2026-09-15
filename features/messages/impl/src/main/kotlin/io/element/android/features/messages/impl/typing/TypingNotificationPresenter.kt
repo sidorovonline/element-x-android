@@ -58,13 +58,10 @@ class TypingNotificationPresenter(
         val myClawRoomActivity by remember(room.roomId) {
             myClawRoomActivityService.activityFlow(room.roomId)
         }.collectAsState(initial = null)
-        val typingDisplayName = myClawRoomActivity
-            ?.takeIf { it.state == MyClawRoomActivityState.TYPING }
-            ?.senderDisplayName
         val workingDisplayName = myClawRoomActivity
             ?.takeIf { it.state == MyClawRoomActivityState.WORKING }
             ?.senderDisplayName
-        val visibleTypingMembers = if (typingDisplayName != null || workingDisplayName != null) {
+        val visibleTypingMembers = if (workingDisplayName != null) {
             persistentListOf()
         } else {
             typingMembersState
@@ -81,8 +78,8 @@ class TypingNotificationPresenter(
 
         // This will keep the space reserved for the typing notifications after the first one is displayed
         var reserveSpace by remember { mutableStateOf(false) }
-        LaunchedEffect(renderTypingNotifications, visibleTypingMembers, typingDisplayName, workingDisplayName) {
-            if (renderTypingNotifications && (visibleTypingMembers.isNotEmpty() || typingDisplayName != null || workingDisplayName != null)) {
+        LaunchedEffect(renderTypingNotifications, visibleTypingMembers, workingDisplayName) {
+            if (renderTypingNotifications && (visibleTypingMembers.isNotEmpty() || workingDisplayName != null)) {
                 reserveSpace = true
             }
         }
@@ -90,7 +87,6 @@ class TypingNotificationPresenter(
         return TypingNotificationState(
             renderTypingNotifications = renderTypingNotifications,
             typingMembers = visibleTypingMembers,
-            typingDisplayName = typingDisplayName,
             workingDisplayName = workingDisplayName,
             reserveSpace = reserveSpace,
         )

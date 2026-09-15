@@ -23,7 +23,7 @@ class MyClawRoomActivityParserTest {
                   "room_id": "!room:server",
                   "session_id": "sess_123",
                   "state": "working",
-                  "sender_display_name": "Spark",
+                  "sender_display_name": "Windows",
                   "updated_at": "2026-06-29T12:00:00Z",
                   "expires_at": "2026-06-29T12:05:00Z"
                 }
@@ -34,7 +34,57 @@ class MyClawRoomActivityParserTest {
         assertThat(result?.roomId).isEqualTo(RoomId("!room:server"))
         assertThat(result?.activity?.roomId).isEqualTo(RoomId("!room:server"))
         assertThat(result?.activity?.state).isEqualTo(MyClawRoomActivityState.WORKING)
-        assertThat(result?.activity?.senderDisplayName).isEqualTo("Spark")
+        assertThat(result?.activity?.sessionId).isEqualTo("sess_123")
+    }
+
+    @Test
+    fun `parse keeps active activity without display name`() {
+        val result = MyClawRoomActivityParser.parse(
+            content = """
+                {
+                  "version": 1,
+                  "room_id": "!room:server",
+                  "session_id": "sess_123",
+                  "state": "working",
+                  "updated_at": "2026-06-29T12:00:00Z",
+                  "expires_at": "2026-06-29T12:05:00Z"
+                }
+            """.trimIndent()
+        )
+
+        assertThat(result?.activity?.state).isEqualTo(MyClawRoomActivityState.WORKING)
+        assertThat(result?.activity?.sessionId).isEqualTo("sess_123")
+    }
+
+    @Test
+    fun `parse ignores payload display name`() {
+        val resultWithMachineName = MyClawRoomActivityParser.parse(
+            content = """
+                {
+                  "version": 1,
+                  "room_id": "!room:server",
+                  "session_id": "sess_123",
+                  "state": "working",
+                  "sender_display_name": "spark-matrix",
+                  "updated_at": "2026-06-29T12:00:00Z",
+                  "expires_at": "2026-06-29T12:05:00Z"
+                }
+            """.trimIndent()
+        )
+        val resultWithoutName = MyClawRoomActivityParser.parse(
+            content = """
+                {
+                  "version": 1,
+                  "room_id": "!room:server",
+                  "session_id": "sess_123",
+                  "state": "working",
+                  "updated_at": "2026-06-29T12:00:00Z",
+                  "expires_at": "2026-06-29T12:05:00Z"
+                }
+            """.trimIndent()
+        )
+
+        assertThat(resultWithMachineName?.activity).isEqualTo(resultWithoutName?.activity)
     }
 
     @Test
@@ -56,7 +106,7 @@ class MyClawRoomActivityParserTest {
     }
 
     @Test
-    fun `parse rejects active activity without expiry`() {
+    fun `parse treats legacy custom typing as an idle clear`() {
         val result = MyClawRoomActivityParser.parse(
             content = """
                 {
@@ -69,7 +119,8 @@ class MyClawRoomActivityParserTest {
             """.trimIndent()
         )
 
-        assertThat(result).isNull()
+        assertThat(result?.roomId).isEqualTo(RoomId("!room:server"))
+        assertThat(result?.activity).isNull()
     }
 
     @Test

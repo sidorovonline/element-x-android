@@ -15,12 +15,12 @@ data class MyClawRoomActivity(
     val roomId: RoomId,
     val sessionId: String,
     val state: MyClawRoomActivityState,
+    /** Matrix room-member profile display name resolved for the validated to-device sender. */
     val senderDisplayName: String,
     val updatedAtMillis: Long?,
     val expiresAtMillis: Long,
 )
 
 enum class MyClawRoomActivityState {
-    TYPING,
     WORKING,
 }

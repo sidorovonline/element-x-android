@@ -16,7 +16,9 @@ import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivity
 import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivityService
 import io.element.android.libraries.matrix.api.myclaw.myClawCandidateUserIds
 import io.element.android.libraries.matrix.api.room.BaseRoom
+import io.element.android.libraries.matrix.api.room.roomMembers
 import io.element.android.libraries.matrix.api.to_device.CustomToDeviceEvent
+import io.element.android.libraries.matrix.api.user.MatrixUser
 import io.element.android.services.toolbox.api.systemclock.SystemClock
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -48,6 +50,7 @@ internal class RustMyClawRoomActivityService(
     private val dispatcher: CoroutineDispatcher,
     private val clock: SystemClock,
     private val getRoom: suspend (RoomId) -> BaseRoom?,
+    private val getProfile: suspend (UserId) -> Result<MatrixUser>,
     private val sendCustomToDevice: suspend (String, UserId, List<DeviceId>, String, String?) -> Result<Unit>,
     private val customToDeviceEvents: (String) -> Flow<CustomToDeviceEvent>,
 ) : MyClawRoomActivityService {
@@ -57,7 +60,9 @@ internal class RustMyClawRoomActivityService(
     private val lock = Mutex()
     private val pendingResponseRooms = mutableMapOf<String, RoomId>()
     private val candidateUserIdsByRoom = mutableMapOf<RoomId, Set<UserId>>()
+    private val verifiedDisplayNames = mutableMapOf<Pair<RoomId, UserId>, String>()
     private val subscribedRoomTimestamps = mutableMapOf<RoomId, Long>()
+    private val displayNameResolutionJobs = mutableMapOf<RoomId, Job>()
     private val expiryJobs = mutableMapOf<RoomId, Job>()
 
     init {
@@ -75,6 +80,9 @@ internal class RustMyClawRoomActivityService(
         val room = getRoom(roomId) ?: return@withContext
         val candidateUserIds = room.myClawCandidateUserIds(sessionId)
         if (candidateUserIds.isEmpty()) return@withContext
+        candidateUserIds.forEach { candidateUserId ->
+            resolveSenderDisplayName(roomId, candidateUserId, room)
+        }
         val nowMillis = clock.epochMillis()
         val shouldRequest = lock.withLock {
             val subscribedAtMillis = subscribedRoomTimestamps[roomId]
@@ -128,6 +136,7 @@ internal class RustMyClawRoomActivityService(
                     candidateUserIdsByRoom.remove(roomId)
                     subscribedRoomTimestamps.remove(roomId)
                     pendingResponseRooms.entries.removeAll { it.value == roomId }
+                    verifiedDisplayNames.keys.removeAll { it.first == roomId }
                 }
             }
             roomIds.forEach(::clearActivity)
@@ -164,14 +173,92 @@ internal class RustMyClawRoomActivityService(
             }
         }
 
-        applyActivity(payload.activity, roomId)
+        val parsedActivity = payload.activity
+        if (parsedActivity == null) {
+            clearActivity(roomId)
+        } else {
+            resolveAndApplyActivity(parsedActivity, event.sender)
+        }
     }
 
-    private fun applyActivity(activity: MyClawRoomActivity?, roomId: RoomId) {
-        if (activity == null) {
+    private suspend fun resolveSenderDisplayName(roomId: RoomId, sender: UserId, room: BaseRoom? = null): String? {
+        val resolvedRoom = room ?: getRoom(roomId)
+        val loadedRoomDisplayName = resolvedRoom
+            ?.membersStateFlow
+            ?.value
+            ?.roomMembers()
+            ?.firstOrNull { it.userId == sender }
+            ?.displayName
+            ?.takeIf(String::isNotBlank)
+        val updatedRoomDisplayName = if (loadedRoomDisplayName == null) {
+            resolvedRoom
+                ?.getUpdatedMember(sender)
+                ?.getOrNull()
+                ?.displayName
+                ?.takeIf(String::isNotBlank)
+        } else {
+            null
+        }
+        val roomDisplayName = loadedRoomDisplayName
+            ?: updatedRoomDisplayName
+            ?: runCatchingExceptions { resolvedRoom?.getDirectRoomMember() }
+                .getOrNull()
+                ?.takeIf { it.userId == sender }
+                ?.displayName
+                ?.takeIf(String::isNotBlank)
+        val cachedDisplayName = lock.withLock {
+            verifiedDisplayNames[roomId to sender]
+        }
+        val profileDisplayName = if (roomDisplayName == null && cachedDisplayName == null) {
+            getProfile(sender).getOrNull()?.displayName?.takeIf(String::isNotBlank)
+        } else {
+            null
+        }
+        val resolvedDisplayName = roomDisplayName ?: cachedDisplayName ?: profileDisplayName
+        if (resolvedDisplayName != null) {
+            lock.withLock {
+                verifiedDisplayNames[roomId to sender] = resolvedDisplayName
+            }
+            return resolvedDisplayName
+        }
+        return cachedDisplayName
+    }
+
+    private fun resolveAndApplyActivity(parsedActivity: ParsedMyClawRoomActivity, sender: UserId) {
+        val roomId = parsedActivity.roomId
+        if (parsedActivity.expiresAtMillis <= clock.epochMillis()) {
             clearActivity(roomId)
             return
         }
+        displayNameResolutionJobs.remove(roomId)?.cancel()
+        displayNameResolutionJobs[roomId] = coroutineScope.launch {
+            while (clock.epochMillis() < parsedActivity.expiresAtMillis) {
+                val senderDisplayName = withContext(dispatcher) {
+                    runCatchingExceptions {
+                        resolveSenderDisplayName(roomId, sender)
+                    }.getOrNull()
+                }
+                if (senderDisplayName != null) {
+                    applyActivity(
+                        MyClawRoomActivity(
+                            roomId = parsedActivity.roomId,
+                            sessionId = parsedActivity.sessionId,
+                            state = parsedActivity.state,
+                            senderDisplayName = senderDisplayName,
+                            updatedAtMillis = parsedActivity.updatedAtMillis,
+                            expiresAtMillis = parsedActivity.expiresAtMillis,
+                        )
+                    )
+                    return@launch
+                }
+                delay(DISPLAY_NAME_RETRY_INTERVAL)
+            }
+            Timber.w("Unable to resolve MyClaw Matrix profile before activity expired for roomId=$roomId sender=$sender")
+            clearActivity(roomId)
+        }
+    }
+
+    private fun applyActivity(activity: MyClawRoomActivity) {
         val nowMillis = clock.epochMillis()
         if (activity.expiresAtMillis <= nowMillis) {
             clearActivity(activity.roomId)
@@ -192,6 +279,7 @@ internal class RustMyClawRoomActivityService(
     }
 
     private fun clearActivity(roomId: RoomId) {
+        displayNameResolutionJobs.remove(roomId)?.cancel()
         expiryJobs.remove(roomId)?.cancel()
         _activities.update { current ->
             current - roomId
@@ -232,6 +320,7 @@ internal class RustMyClawRoomActivityService(
         const val UPDATE_TYPE = "icu.victor.myclaw.room_activity.update"
 
         private const val VERSION = 1
+        private val DISPLAY_NAME_RETRY_INTERVAL = 1.seconds
         private val PENDING_RESPONSE_TTL = 8.seconds
         private val SUBSCRIPTION_REFRESH_INTERVAL = 8.seconds
     }

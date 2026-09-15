@@ -8,7 +8,6 @@
 package io.element.android.libraries.matrix.impl.myclaw
 
 import io.element.android.libraries.matrix.api.core.RoomId
-import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivity
 import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivityState
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
@@ -24,43 +23,28 @@ internal object MyClawRoomActivityParser {
             if (json["version"]?.jsonPrimitive?.intOrNull != VERSION) return@runCatching null
             val roomId = RoomId(json["room_id"]?.jsonPrimitive?.contentOrNull ?: return@runCatching null)
             val wireState = json["state"]?.jsonPrimitive?.contentOrNull ?: return@runCatching null
-            val state = wireState.toActivityState()
             val sessionId = json["session_id"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: return@runCatching null
             val updatedAtMillis = json["updated_at"]?.jsonPrimitive?.contentOrNull?.toEpochMillisOrNull()
-            val senderDisplayName = json["sender_display_name"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
-                ?: json["display_name"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
-                ?: DEFAULT_SENDER_DISPLAY_NAME
 
             MyClawRoomActivityPayload(
                 txnId = json["txn_id"]?.jsonPrimitive?.contentOrNull,
                 roomId = roomId,
-                activity = when (state) {
-                    null -> {
-                        if (wireState != IDLE_STATE) return@runCatching null
-                        null
-                    }
-                    else -> {
+                activity = when (wireState) {
+                    WORKING_STATE -> {
                         val expiresAtMillis = json["expires_at"]?.jsonPrimitive?.contentOrNull?.toEpochMillisOrNull() ?: return@runCatching null
-                        MyClawRoomActivity(
+                        ParsedMyClawRoomActivity(
                             roomId = roomId,
                             sessionId = sessionId,
-                            state = state,
-                            senderDisplayName = senderDisplayName,
+                            state = MyClawRoomActivityState.WORKING,
                             updatedAtMillis = updatedAtMillis,
                             expiresAtMillis = expiresAtMillis,
                         )
                     }
+                    IDLE_STATE, LEGACY_TYPING_STATE -> null
+                    else -> return@runCatching null
                 },
             )
         }.getOrNull()
-    }
-
-    private fun String.toActivityState(): MyClawRoomActivityState? {
-        return when (this) {
-            "typing" -> MyClawRoomActivityState.TYPING
-            "working" -> MyClawRoomActivityState.WORKING
-            else -> null
-        }
     }
 
     private fun String.toEpochMillisOrNull(): Long? {
@@ -69,11 +53,20 @@ internal object MyClawRoomActivityParser {
 
     private const val VERSION = 1
     private const val IDLE_STATE = "idle"
-    private const val DEFAULT_SENDER_DISPLAY_NAME = "Spark"
+    private const val LEGACY_TYPING_STATE = "typing"
+    private const val WORKING_STATE = "working"
 }
 
 internal data class MyClawRoomActivityPayload(
     val txnId: String?,
     val roomId: RoomId,
-    val activity: MyClawRoomActivity?,
+    val activity: ParsedMyClawRoomActivity?,
+)
+
+internal data class ParsedMyClawRoomActivity(
+    val roomId: RoomId,
+    val sessionId: String,
+    val state: MyClawRoomActivityState,
+    val updatedAtMillis: Long?,
+    val expiresAtMillis: Long,
 )
