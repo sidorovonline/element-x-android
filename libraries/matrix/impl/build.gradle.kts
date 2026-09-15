@@ -28,7 +28,7 @@ dependencies {
     } else {
         throw GradleException(
             "Missing local Rust SDK AAR at ${localRustSdkAar.path}. " +
-                "Build it with /home/victor/dev/myclaw-matrix-build-env/build-sdk-aar.sh before compiling this fork."
+                "Build the matching SDK sources as described in docs/dsh-session-commands.md before compiling this fork."
         )
     }
     implementation(projects.libraries.rustlsTls)

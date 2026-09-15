@@ -132,6 +132,9 @@ interface MatrixClient {
 
     fun customToDeviceEvents(eventType: String): Flow<CustomToDeviceEvent>
 
+    /** Verify an opaque message using a locally verified device, without exposing its keys. */
+    suspend fun verifyDeviceSignature(userId: UserId, deviceId: DeviceId, message: String, signature: String): Boolean = false
+
     suspend fun trackRecentlyVisitedRoom(roomId: RoomId): Result<Unit>
     suspend fun getRecentlyVisitedRooms(): Result<List<RoomId>>
 

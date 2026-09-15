@@ -12,6 +12,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.net.Uri
 import androidx.annotation.VisibleForTesting
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -37,6 +38,7 @@ import io.element.android.features.messages.impl.attachments.Attachment
 import io.element.android.features.messages.impl.attachments.Attachment.Media
 import io.element.android.features.messages.impl.attachments.preview.error.sendAttachmentError
 import io.element.android.features.messages.impl.draft.ComposerDraftService
+import io.element.android.features.messages.impl.messagecomposer.suggestions.DshCommandSuggestionsDataSource
 import io.element.android.features.messages.impl.messagecomposer.suggestions.MyClawCommandSuggestionsDataSource
 import io.element.android.features.messages.impl.messagecomposer.suggestions.RoomAliasSuggestionsDataSource
 import io.element.android.features.messages.impl.messagecomposer.suggestions.SuggestionsProcessor
@@ -91,6 +93,9 @@ import io.element.android.wysiwyg.compose.RichTextEditorState
 import io.element.android.wysiwyg.display.TextDisplay
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
@@ -130,6 +135,7 @@ class MessageComposerPresenter(
     private val richTextEditorStateFactory: RichTextEditorStateFactory,
     private val roomAliasSuggestionsDataSource: RoomAliasSuggestionsDataSource,
     private val myClawCommandSuggestionsDataSource: MyClawCommandSuggestionsDataSource,
+    private val dshCommandSuggestionsDataSource: DshCommandSuggestionsDataSource,
     private val permalinkParser: PermalinkParser,
     private val permalinkBuilder: PermalinkBuilder,
     permissionsPresenterFactory: PermissionsPresenter.Factory,
@@ -216,6 +222,19 @@ class MessageComposerPresenter(
             }
         }
 
+        fun commandAtComposerStart(): Suggestion? {
+            val text = if (showTextFormatting) richTextEditorState.messageMarkdown else markdownTextEditorState.text.value().toString()
+            return if (text.startsWith("/") && text.length <= 640 && text.none { it == '\n' || it == '\r' }) {
+                Suggestion(0, text.length, SuggestionType.Command, text.removePrefix("/"))
+            } else null
+        }
+        LaunchedEffect(showTextFormatting) {
+            snapshotFlow { commandAtComposerStart() }.collect { command ->
+                if (command != null || suggestionSearchTrigger.value?.type == SuggestionType.Command) {
+                    suggestionSearchTrigger.value = command
+                }
+            }
+        }
         val suggestions = remember { mutableStateListOf<ResolvedSuggestion>() }
         val discoveredCommandSuggestionsFlow = remember {
             MutableStateFlow(emptyList<SlashCommandSuggestion>())
@@ -279,7 +298,7 @@ class MessageComposerPresenter(
                         richTextEditorState = richTextEditorState,
                         slashCommandAction = slashCommandAction,
                         discoveredCommandNames = discoveredCommandSuggestions.mapTo(mutableSetOf()) {
-                            it.command.removePrefix("/").lowercase()
+                            it.command.removePrefix("/").substringBefore(' ').lowercase()
                         },
                     )
                 }
@@ -356,7 +375,7 @@ class MessageComposerPresenter(
                     }
                 }
                 is MessageComposerEvent.SuggestionReceived -> {
-                    suggestionSearchTrigger.value = event.suggestion
+                    suggestionSearchTrigger.value = commandAtComposerStart() ?: event.suggestion
                 }
                 is MessageComposerEvent.InsertSuggestion -> {
                     localCoroutineScope.launch {
@@ -376,9 +395,13 @@ class MessageComposerPresenter(
                                     richTextEditorState.insertMentionAtSuggestion(text = text, link = link)
                                 }
                                 is ResolvedSuggestion.Command -> {
-                                    richTextEditorState.replaceSuggestion(suggestion.command.command)
+                                    richTextEditorState.setMarkdown("${suggestion.command.command} ")
                                 }
                             }
+                        } else if (event.resolvedSuggestion is ResolvedSuggestion.Command) {
+                            val text = "${event.resolvedSuggestion.command.command} "
+                            markdownTextEditorState.text.update(text, true)
+                            markdownTextEditorState.selection = text.length..text.length
                         } else if (markdownTextEditorState.currentSuggestion != null) {
                             markdownTextEditorState.insertSuggestion(
                                 resolvedSuggestion = event.resolvedSuggestion,
@@ -441,10 +464,24 @@ class MessageComposerPresenter(
                 .debounce(0.2.seconds)
                 .collectLatest { suggestion ->
                     if (suggestion?.type == SuggestionType.Command && suggestion.start == 0) {
-                        discoveredCommandSuggestionsFlow.value = myClawCommandSuggestionsDataSource.getSuggestions(
-                            room = room,
-                            query = suggestion.text,
-                        )
+                        val declarations = discoveredCommandSuggestionsFlow.value.filter { ' ' !in it.command }
+                        discoveredCommandSuggestionsFlow.value = declarations
+                        coroutineScope {
+                            var dsh = emptyList<SlashCommandSuggestion>()
+                            var other = emptyList<SlashCommandSuggestion>()
+                            fun publish() { discoveredCommandSuggestionsFlow.value = (dsh + other + declarations).distinctBy { it.command } }
+                            launch {
+                                while (isActive) {
+                                    dsh = dshCommandSuggestionsDataSource.getSuggestions(room, suggestion.text)
+                                    publish()
+                                    delay(5.seconds)
+                                }
+                            }
+                            launch {
+                                other = myClawCommandSuggestionsDataSource.getSuggestions(room, suggestion.text)
+                                publish()
+                            }
+                        }
                     } else if (suggestion != null) {
                         // Non-command suggestions invalidate remote slash metadata. Null is emitted after insertion, so keep it for send.
                         discoveredCommandSuggestionsFlow.value = emptyList()

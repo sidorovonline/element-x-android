@@ -361,6 +361,11 @@ class RustMatrixClient(
         }
     }
 
+    override suspend fun verifyDeviceSignature(userId: UserId, deviceId: DeviceId, message: String, signature: String): Boolean =
+        withContext(sessionDispatcher) {
+            runCatchingExceptions { innerClient.verifyDeviceSignature(userId.value, deviceId.value, message, signature) }.getOrDefault(false)
+        }
+
     override fun customToDeviceEvents(eventType: String): Flow<CustomToDeviceEvent> {
         return mxCallbackFlow {
             innerClient.subscribeToCustomToDeviceEvents(
@@ -378,7 +383,7 @@ class RustMatrixClient(
                     }
                 }
             )
-        }.buffer(Channel.UNLIMITED)
+        }.buffer(if (eventType == "icu.victor.dsh.commands.response") 16 else Channel.UNLIMITED)
     }
 
     override suspend fun getUrl(url: String): Result<ByteArray> = withContext(sessionDispatcher) {
