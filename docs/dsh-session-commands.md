@@ -6,18 +6,35 @@ Type `/` in a mapped room to discover `/models` and `/model <provider/model>`. S
 
 ## Trust and lifecycle
 
-Discovery sends `icu.victor.dsh.commands.request` with a fresh transaction ID, room ID, query, requesting device ID and `signed_response: true`. Candidate sources must be joined members on the account's homeserver; discovery is disabled above ten candidates. Responses use `icu.victor.dsh.commands.response` and contain a signed UTF-8 payload plus device ID and Ed25519 signature. The payload binds the response event type, sender, device, transaction, room and exact query.
+Discovery first reads cached joined-room state for a signed, short-lived
+`icu.victor.dsh.commands.service` advertisement. Exactly one currently joined,
+verified service device must match the room and sender. Ambiguous, expired,
+revoked or absent services receive no discovery requests. The bot must have
+permission to publish its own room-state advertisement.
 
-The SDK verifies against its stored, verified, non-deleted Matrix device key. A key supplied by the response is never trusted. Unsigned responses and unverified devices are rejected. The bot device must already be verified by the account through Matrix trust. Membership is checked again on receipt. No catalog is retained across calls, rooms or accounts. Requests, payloads, arrays and field lengths are bounded; timeout, cancellation and query changes release the collector. The whole operation is limited to five seconds. A fresh query is made every five seconds while command completion is active.
+Version-2 `icu.victor.dsh.commands.request` targets only that verified device and
+contains a nonce, room/device binding, limit and optional **declared command name**.
+Unsent arguments are never transmitted: all argument-prefix matching happens
+locally. Unknown command drafts send no draft text. The independent command source
+continues to receive only the command-name prefix, never arguments.
+
+Responses use `icu.victor.dsh.commands.response` with a signed UTF-8 payload bound
+to sender/device, nonce, room and command name. The SDK verifies the stored trusted
+device key; response-supplied keys are never trusted. Membership and the current
+service advertisement are checked again on receipt. Requests have a five-second
+bound and refresh every five seconds while completion is open. The visible and
+parser catalog is replaced on every result, cleared on failure/cancellation, and
+scoped to the current room/account. Only an explicitly selected literal can be
+sent after expiry; it never becomes an autocomplete authorization cache.
 
 Commands are generic descriptors (`name`, `description`, optional `argument_hint`); completions can include an exact argument after the declared name. Model names are not compiled into the app. Backend authorization remains authoritative when a command is sent.
 
 ## SDK dependency and build
 
-This fork already requires a locally built Rust SDK AAR. This feature additionally requires `Client.verify_device_signature`, exposed to Kotlin as `verifyDeviceSignature`. The matching source checkpoints are:
+This fork already requires a locally built Rust SDK AAR. This feature additionally requires `Client.verify_device_signature` and the bounded joined-room `get_room_state_events`, exposed through Kotlin. The matching source checkpoints are:
 
-- matrix-rust-sdk: `1f97535` (verified-device signature verification)
-- matrix-rust-components-kotlin: `b41d3dc` (generated UniFFI bindings)
+- matrix-rust-sdk: `01d4383` (verified-device signatures and bounded room-state discovery)
+- matrix-rust-components-kotlin: `47aac15` (matching generated UniFFI bindings)
 
 Build the matching native library and generated Kotlin bindings together, then place the resulting AAR at `libraries/rustsdk/matrix-rust-sdk.aar` (ignored). Never commit binaries or signing/authentication material. Use the existing Docker-only Android development stack; do not install host Android/JDK tooling. Run `:app:assembleFdroidDebug` and the focused DSH/MyClaw discovery tests. Package identity and signing configuration are unchanged.
 

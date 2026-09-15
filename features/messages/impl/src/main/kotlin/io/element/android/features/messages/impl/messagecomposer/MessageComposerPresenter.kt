@@ -240,6 +240,9 @@ class MessageComposerPresenter(
             MutableStateFlow(emptyList<SlashCommandSuggestion>())
         }
         val discoveredCommandSuggestions by discoveredCommandSuggestionsFlow.collectAsState()
+        // A literal explicitly selected by the user may still be sent if discovery
+        // expires. It is not a cached declaration or an authorization decision.
+        var insertedCommandName by remember(room.roomId, room.sessionId) { mutableStateOf<String?>(null) }
         ResolveSuggestionsEffect(
             suggestions = suggestions,
             discoveredCommandSuggestionsFlow = discoveredCommandSuggestionsFlow,
@@ -293,11 +296,14 @@ class MessageComposerPresenter(
                     }
                 }
                 is MessageComposerEvent.SendMessage -> {
+                    val literalName = commandAtComposerStart()?.text?.substringBefore(' ')?.lowercase()
+                    val selectedLiteral = insertedCommandName?.takeIf { it == literalName }
+                    insertedCommandName = null
                     sessionCoroutineScope.sendMessage(
                         markdownTextEditorState = markdownTextEditorState,
                         richTextEditorState = richTextEditorState,
                         slashCommandAction = slashCommandAction,
-                        discoveredCommandNames = discoveredCommandSuggestions.mapTo(mutableSetOf()) {
+                        discoveredCommandNames = discoveredCommandSuggestions.mapTo(mutableSetOf<String>().apply { selectedLiteral?.let(::add) }) {
                             it.command.removePrefix("/").substringBefore(' ').lowercase()
                         },
                     )
@@ -378,6 +384,9 @@ class MessageComposerPresenter(
                     suggestionSearchTrigger.value = commandAtComposerStart() ?: event.suggestion
                 }
                 is MessageComposerEvent.InsertSuggestion -> {
+                    insertedCommandName = (event.resolvedSuggestion as? ResolvedSuggestion.Command)?.command?.command
+                        ?.takeIf { selected -> discoveredCommandSuggestions.any { it.command == selected } }
+                        ?.removePrefix("/")?.substringBefore(' ')?.lowercase()
                     localCoroutineScope.launch {
                         if (showTextFormatting) {
                             when (val suggestion = event.resolvedSuggestion) {
@@ -459,32 +468,36 @@ class MessageComposerPresenter(
     private fun ResolveDiscoveredCommandSuggestionsEffect(
         discoveredCommandSuggestionsFlow: MutableStateFlow<List<SlashCommandSuggestion>>,
     ) {
-        LaunchedEffect(Unit) {
+        LaunchedEffect(room.roomId, room.sessionId) {
             suggestionSearchTrigger
                 .debounce(0.2.seconds)
                 .collectLatest { suggestion ->
+                    discoveredCommandSuggestionsFlow.value = emptyList()
                     if (suggestion?.type == SuggestionType.Command && suggestion.start == 0) {
-                        val declarations = discoveredCommandSuggestionsFlow.value.filter { ' ' !in it.command }
-                        discoveredCommandSuggestionsFlow.value = declarations
-                        coroutineScope {
-                            var dsh = emptyList<SlashCommandSuggestion>()
-                            var other = emptyList<SlashCommandSuggestion>()
-                            fun publish() { discoveredCommandSuggestionsFlow.value = (dsh + other + declarations).distinctBy { it.command } }
-                            launch {
-                                while (isActive) {
-                                    dsh = dshCommandSuggestionsDataSource.getSuggestions(room, suggestion.text)
+                        try {
+                            coroutineScope {
+                                var dsh = emptyList<SlashCommandSuggestion>()
+                                var other = emptyList<SlashCommandSuggestion>()
+                                fun publish() {
+                                    discoveredCommandSuggestionsFlow.value = (dsh + other).distinctBy { it.command }
+                                }
+                                launch {
+                                    while (isActive) {
+                                        dsh = dshCommandSuggestionsDataSource.getSuggestions(room, suggestion.text)
+                                        publish()
+                                        delay(5.seconds)
+                                    }
+                                }
+                                launch {
+                                    // Preserve the independent source's original command-name
+                                    // discovery boundary. Never pass it unsent arguments.
+                                    other = myClawCommandSuggestionsDataSource.getSuggestions(room, suggestion.text.substringBefore(' '))
                                     publish()
-                                    delay(5.seconds)
                                 }
                             }
-                            launch {
-                                other = myClawCommandSuggestionsDataSource.getSuggestions(room, suggestion.text)
-                                publish()
-                            }
+                        } finally {
+                            discoveredCommandSuggestionsFlow.value = emptyList()
                         }
-                    } else if (suggestion != null) {
-                        // Non-command suggestions invalidate remote slash metadata. Null is emitted after insertion, so keep it for send.
-                        discoveredCommandSuggestionsFlow.value = emptyList()
                     }
                 }
         }

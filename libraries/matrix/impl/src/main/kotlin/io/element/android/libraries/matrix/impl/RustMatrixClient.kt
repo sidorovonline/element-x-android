@@ -366,6 +366,10 @@ class RustMatrixClient(
             runCatchingExceptions { innerClient.verifyDeviceSignature(userId.value, deviceId.value, message, signature) }.getOrDefault(false)
         }
 
+    override suspend fun getRoomStateEvents(roomId: RoomId, eventType: String): Result<List<String>> = withContext(sessionDispatcher) {
+        runCatchingExceptions { innerClient.getRoomStateEvents(roomId.value, eventType) }
+    }
+
     override fun customToDeviceEvents(eventType: String): Flow<CustomToDeviceEvent> {
         return mxCallbackFlow {
             innerClient.subscribeToCustomToDeviceEvents(

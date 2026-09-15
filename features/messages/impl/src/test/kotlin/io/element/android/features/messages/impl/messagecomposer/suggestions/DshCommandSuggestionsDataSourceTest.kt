@@ -42,9 +42,26 @@ class DshCommandSuggestionsDataSourceTest {
     private val bot = UserId("@owned-bot:${A_SESSION_ID.value.substringAfter(':')}")
     private val transport = FakeMatrixClient(sessionId = A_SESSION_ID, deviceId = A_DEVICE_ID)
     private val key = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
+    private var serviceAvailable = true
+    private var deviceTrusted = true
+    private var serviceExpiry = Long.MAX_VALUE
     private val client = object : MatrixClient by transport {
+        override suspend fun getRoomStateEvents(roomId: RoomId, eventType: String): Result<List<String>> {
+            if (!serviceAvailable) return Result.success(emptyList())
+            val payload = JsonObject(mapOf(
+                "version" to JsonPrimitive(2), "type" to JsonPrimitive(DshCommandSuggestionsDataSource.SERVICE_TYPE),
+                "sender" to JsonPrimitive(bot.value), "device_id" to JsonPrimitive("OWNED"), "room_id" to JsonPrimitive(roomId.value),
+                "issued_at" to JsonPrimitive(System.currentTimeMillis()),
+                "expires_at" to JsonPrimitive(minOf(serviceExpiry, System.currentTimeMillis() + 90000)),
+                "commands" to Json.parseToJsonElement("[\"models\",\"model\"]"),
+            )).toString()
+            return Result.success(listOf(JsonObject(mapOf(
+                "type" to JsonPrimitive(eventType), "sender" to JsonPrimitive(bot.value), "state_key" to JsonPrimitive(bot.value),
+                "content" to JsonObject(mapOf("payload" to JsonPrimitive(payload), "signature" to JsonPrimitive(sign(payload)))),
+            )).toString()))
+        }
         override suspend fun verifyDeviceSignature(userId: UserId, deviceId: DeviceId, message: String, signature: String): Boolean =
-            userId == bot && deviceId.value == "OWNED" && runCatching {
+            deviceTrusted && userId == bot && deviceId.value == "OWNED" && runCatching {
                 Signature.getInstance("Ed25519").run {
                     initVerify(key.public)
                     update(message.toByteArray())
@@ -57,6 +74,12 @@ class DshCommandSuggestionsDataSourceTest {
         roomId = A_ROOM_ID,
         updateMembersResult = {},
     ).apply { membersStateFlow.value = RoomMembersState.Ready(persistentListOf(aRoomMember(bot))) })
+
+    private fun sign(payload: String): String = Signature.getInstance("Ed25519").run {
+        initSign(key.private)
+        update(payload.toByteArray())
+        Base64.getEncoder().withoutPadding().encodeToString(sign())
+    }
 
     private fun reply(request: String, name: String, sender: UserId = bot, invalidSignature: Boolean = false): CustomToDeviceEvent {
         val requestFields = Json.parseToJsonElement(request).jsonObject
@@ -74,7 +97,7 @@ class DshCommandSuggestionsDataSourceTest {
         }
         if (invalidSignature) signature[0] = (signature[0].toInt() xor 1).toByte()
         return CustomToDeviceEvent(DshCommandSuggestionsDataSource.RESPONSE_TYPE, sender, JsonObject(mapOf(
-            "version" to JsonPrimitive(1),
+            "version" to JsonPrimitive(2),
             "device_id" to JsonPrimitive("OWNED"),
             "payload" to JsonPrimitive(data),
             "signature" to JsonPrimitive(Base64.getEncoder().withoutPadding().encodeToString(signature)),
@@ -149,5 +172,43 @@ class DshCommandSuggestionsDataSourceTest {
         val requestCount = transport.sentCustomToDeviceEvents.size
         assertThat(source.getSuggestions(room, "models")).isEmpty()
         assertThat(transport.sentCustomToDeviceEvents).hasSize(requestCount)
+    }
+    @Test
+    fun `draft arguments stay local and only a trusted advertised device receives metadata`() = runTest {
+        val pending = async { source.getSuggestions(room, "model owned-unsent-sentinel", timeout = 1.seconds) }
+        runCurrent()
+        val outbound = transport.sentCustomToDeviceEvents.single()
+        val fields = Json.parseToJsonElement(outbound.content).jsonObject
+        assertThat(fields["command"]).isEqualTo(JsonPrimitive("model"))
+        assertThat(outbound.content).doesNotContain("owned-unsent-sentinel")
+        assertThat(fields).doesNotContainKey("query")
+        assertThat(outbound.deviceIds).containsExactly(DeviceId("OWNED"))
+        advanceTimeBy(1001)
+        assertThat(pending.await()).isEmpty()
+        val unknown = async { source.getSuggestions(room, "unknown private-draft", timeout = 1.seconds) }
+        runCurrent()
+        val metadata = transport.sentCustomToDeviceEvents.last().content
+        assertThat(metadata).doesNotContain("unknown")
+        assertThat(metadata).doesNotContain("private-draft")
+        advanceTimeBy(1001)
+        assertThat(unknown.await()).isEmpty()
+    }
+
+    @Test
+    fun `revoked absent and expired service stops network discovery and clears prior results`() = runTest {
+        val pending = async { source.getSuggestions(room, "models") }
+        runCurrent()
+        transport.emitCustomToDeviceEvent(reply(transport.sentCustomToDeviceEvents.single().content, "models"))
+        runCurrent()
+        assertThat(pending.await()).hasSize(1)
+        deviceTrusted = false
+        assertThat(source.getSuggestions(room, "models")).isEmpty()
+        deviceTrusted = true
+        serviceAvailable = false
+        assertThat(source.getSuggestions(room, "models")).isEmpty()
+        serviceAvailable = true
+        serviceExpiry = 0
+        assertThat(source.getSuggestions(room, "models")).isEmpty()
+        assertThat(transport.sentCustomToDeviceEvents).hasSize(1)
     }
 }

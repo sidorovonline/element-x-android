@@ -135,6 +135,9 @@ interface MatrixClient {
     /** Verify an opaque message using a locally verified device, without exposing its keys. */
     suspend fun verifyDeviceSignature(userId: UserId, deviceId: DeviceId, message: String, signature: String): Boolean = false
 
+    /** Bounded raw state from a joined room's sync store; does not transmit composer content. */
+    suspend fun getRoomStateEvents(roomId: RoomId, eventType: String): Result<List<String>> = Result.success(emptyList())
+
     suspend fun trackRecentlyVisitedRoom(roomId: RoomId): Result<Unit>
     suspend fun getRecentlyVisitedRooms(): Result<List<RoomId>>
 
