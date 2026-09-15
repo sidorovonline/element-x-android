@@ -106,7 +106,7 @@ class DshCommandSuggestionsDataSourceTest {
 
     @Test
     fun `signed dynamic responses reject spoofing and replay and do not cache the catalog`() = runTest {
-        val first = async { source.getSuggestions(room, "model ") }
+        val first = async { source.getSuggestions(room, "model", completeArguments = true) }
         runCurrent()
         val request = transport.sentCustomToDeviceEvents.single().content
         transport.emitCustomToDeviceEvent(reply(request, "model owned/first", invalidSignature = true))
@@ -117,7 +117,7 @@ class DshCommandSuggestionsDataSourceTest {
         runCurrent()
         assertThat(first.await().single().command).isEqualTo("/model owned/first")
 
-        val second = async { source.getSuggestions(room, "model ") }
+        val second = async { source.getSuggestions(room, "model", completeArguments = true) }
         runCurrent()
         transport.emitCustomToDeviceEvent(reply(request, "model owned/first"))
         runCurrent()
@@ -133,7 +133,7 @@ class DshCommandSuggestionsDataSourceTest {
         runCurrent()
         advanceTimeBy(1001)
         assertThat(timed.await()).isEmpty()
-        val cancelled = async { source.getSuggestions(room, "model ") }
+        val cancelled = async { source.getSuggestions(room, "model", completeArguments = true) }
         runCurrent()
         val old = transport.sentCustomToDeviceEvents.last().content
         cancelled.cancel()
@@ -153,8 +153,8 @@ class DshCommandSuggestionsDataSourceTest {
             roomId = RoomId("!another:owned.test"),
             updateMembersResult = {},
         ).apply { membersStateFlow.value = RoomMembersState.Ready(persistentListOf(aRoomMember(bot))) })
-        val first = async { source.getSuggestions(room, "model ") }
-        val second = async { source.getSuggestions(otherRoom, "model ") }
+        val first = async { source.getSuggestions(room, "model", completeArguments = true) }
+        val second = async { source.getSuggestions(otherRoom, "model", completeArguments = true) }
         runCurrent()
         val firstRequest = transport.sentCustomToDeviceEvents[0].content
         val secondRequest = transport.sentCustomToDeviceEvents[1].content
@@ -175,7 +175,8 @@ class DshCommandSuggestionsDataSourceTest {
     }
     @Test
     fun `draft arguments stay local and only a trusted advertised device receives metadata`() = runTest {
-        val pending = async { source.getSuggestions(room, "model owned-unsent-sentinel", timeout = 1.seconds) }
+        val query = requireNotNull(CommandDiscoveryQuery.fromDraft("model\towned-unsent-sentinel"))
+        val pending = async { source.getSuggestions(room, query.name, timeout = 1.seconds, completeArguments = query.completeArguments) }
         runCurrent()
         val outbound = transport.sentCustomToDeviceEvents.single()
         val fields = Json.parseToJsonElement(outbound.content).jsonObject
@@ -185,7 +186,8 @@ class DshCommandSuggestionsDataSourceTest {
         assertThat(outbound.deviceIds).containsExactly(DeviceId("OWNED"))
         advanceTimeBy(1001)
         assertThat(pending.await()).isEmpty()
-        val unknown = async { source.getSuggestions(room, "unknown private-draft", timeout = 1.seconds) }
+        val unknownQuery = requireNotNull(CommandDiscoveryQuery.fromDraft("unknown\u2003private-draft"))
+        val unknown = async { source.getSuggestions(room, unknownQuery.name, timeout = 1.seconds, completeArguments = unknownQuery.completeArguments) }
         runCurrent()
         val metadata = transport.sentCustomToDeviceEvents.last().content
         assertThat(metadata).doesNotContain("unknown")

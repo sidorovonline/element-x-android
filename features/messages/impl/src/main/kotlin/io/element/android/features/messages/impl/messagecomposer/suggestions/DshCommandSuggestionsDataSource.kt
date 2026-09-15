@@ -34,15 +34,14 @@ import kotlin.time.Duration.Companion.seconds
 /** Room-local discovery, independent of other bots. No catalog or account state is cached. */
 @Inject
 class DshCommandSuggestionsDataSource(private val matrixClient: MatrixClient) {
-    suspend fun getSuggestions(room: JoinedRoom, query: String, timeout: Duration = 5.seconds): List<SlashCommandSuggestion> {
-        if (query.length > 640 || query.any { it.isISOControl() }) return emptyList()
+    suspend fun getSuggestions(room: JoinedRoom, query: String, timeout: Duration = 5.seconds, completeArguments: Boolean = false): List<SlashCommandSuggestion> {
+        if (!query.matches(Regex("(?:[a-z][a-z0-9_-]{0,63})?"))) return emptyList()
         // Bound the entire operation, including member lookup, sends and signature verification.
         return try {
             withTimeoutOrNull(timeout) {
                 room.updateMembers()
                 val service = trustedService(room) ?: return@withTimeoutOrNull emptyList()
-                val word = query.substringBefore(' ').lowercase()
-                val command = word.takeIf { ' ' in query && it in service.commands }.orEmpty()
+                val command = query.takeIf { completeArguments && it in service.commands }.orEmpty()
                 val txnId = UUID.randomUUID().toString()
                 coroutineScope {
                     var accepted: List<SlashCommandSuggestion> = emptyList()

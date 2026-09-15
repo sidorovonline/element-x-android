@@ -16,7 +16,11 @@ Version-2 `icu.victor.dsh.commands.request` targets only that verified device an
 contains a nonce, room/device binding, limit and optional **declared command name**.
 Unsent arguments are never transmitted: all argument-prefix matching happens
 locally. Unknown command drafts send no draft text. The independent command source
-continues to receive only the command-name prefix, never arguments.
+continues to receive only the command-name prefix, never arguments. A shared
+composer boundary separates the name at any Unicode whitespace (including tabs),
+rejects controls/malformed or overlong input, and passes only the normalized name
+to either discovery consumer. The argument-completion flag carries no argument
+text. Filtering stays in the composer and never changes the literal sent command.
 
 Responses use `icu.victor.dsh.commands.response` with a signed UTF-8 payload bound
 to sender/device, nonce, room and command name. The SDK verifies the stored trusted

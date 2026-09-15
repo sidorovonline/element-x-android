@@ -38,6 +38,7 @@ import io.element.android.features.messages.impl.attachments.Attachment
 import io.element.android.features.messages.impl.attachments.Attachment.Media
 import io.element.android.features.messages.impl.attachments.preview.error.sendAttachmentError
 import io.element.android.features.messages.impl.draft.ComposerDraftService
+import io.element.android.features.messages.impl.messagecomposer.suggestions.CommandDiscoveryQuery
 import io.element.android.features.messages.impl.messagecomposer.suggestions.DshCommandSuggestionsDataSource
 import io.element.android.features.messages.impl.messagecomposer.suggestions.MyClawCommandSuggestionsDataSource
 import io.element.android.features.messages.impl.messagecomposer.suggestions.RoomAliasSuggestionsDataSource
@@ -474,16 +475,17 @@ class MessageComposerPresenter(
                 .collectLatest { suggestion ->
                     discoveredCommandSuggestionsFlow.value = emptyList()
                     if (suggestion?.type == SuggestionType.Command && suggestion.start == 0) {
+                        val query = CommandDiscoveryQuery.fromDraft(suggestion.text) ?: return@collectLatest
                         try {
                             coroutineScope {
                                 var dsh = emptyList<SlashCommandSuggestion>()
                                 var other = emptyList<SlashCommandSuggestion>()
                                 fun publish() {
-                                    discoveredCommandSuggestionsFlow.value = (dsh + other).distinctBy { it.command }
+                                    discoveredCommandSuggestionsFlow.value = (dsh.filter { query.matches(it.command, suggestion.text) } + other).distinctBy { it.command }
                                 }
                                 launch {
                                     while (isActive) {
-                                        dsh = dshCommandSuggestionsDataSource.getSuggestions(room, suggestion.text)
+                                        dsh = dshCommandSuggestionsDataSource.getSuggestions(room, query.name, completeArguments = query.completeArguments)
                                         publish()
                                         delay(5.seconds)
                                     }
@@ -491,7 +493,7 @@ class MessageComposerPresenter(
                                 launch {
                                     // Preserve the independent source's original command-name
                                     // discovery boundary. Never pass it unsent arguments.
-                                    other = myClawCommandSuggestionsDataSource.getSuggestions(room, suggestion.text.substringBefore(' '))
+                                    other = myClawCommandSuggestionsDataSource.getSuggestions(room, query.name)
                                     publish()
                                 }
                             }
