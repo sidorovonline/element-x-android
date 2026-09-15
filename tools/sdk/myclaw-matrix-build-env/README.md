@@ -1,3 +1,5 @@
+> Historical independent SDK workflow. For the integrated app use [the immutable published source build](../../../docs/dsh-session-commands.md#reproducible-sdk-and-app-build); this older script does not supply its Gradle dependency.
+
 # MyClaw Matrix Android Build Environment
 
 This directory contains the container setup used to build a local Matrix Rust

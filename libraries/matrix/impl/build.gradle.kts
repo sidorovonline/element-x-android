@@ -21,13 +21,13 @@ android {
 setupDependencyInjection()
 
 dependencies {
-    val localRustSdkAar = file("${rootDir.path}/libraries/rustsdk/matrix-rust-sdk.aar")
+    val localRustSdkAar = file("${rootDir.path}/.dsh-build/matrix-rust-sdk.aar")
     if (localRustSdkAar.exists()) {
-        println("\nNote: Using local binary of the Rust SDK for all variants.\n")
+        println("\nNote: Using the source-built, pinned Rust SDK for all variants.\n")
         implementation(projects.libraries.rustsdk)
     } else {
         throw GradleException(
-            "Missing local Rust SDK AAR at ${localRustSdkAar.path}. " +
+            "Missing source-built Rust SDK AAR at ${localRustSdkAar.path}. " +
                 "Build the matching SDK sources as described in docs/dsh-session-commands.md before compiling this fork."
         )
     }

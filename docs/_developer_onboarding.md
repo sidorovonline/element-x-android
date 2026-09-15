@@ -1,3 +1,5 @@
+> On the `dsh-integrated-source` branch, use [the pinned source build](dsh-session-commands.md#reproducible-sdk-and-app-build). The upstream local-AAR instructions below are not the integrated dependency path.
+
 # Developer on boarding
 
 <!--- TOC -->
