@@ -61,7 +61,6 @@ import io.element.android.libraries.designsystem.theme.roomListRoomMessageDate
 import io.element.android.libraries.designsystem.theme.roomListRoomName
 import io.element.android.libraries.designsystem.theme.unreadIndicator
 import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivity
-import io.element.android.libraries.matrix.api.myclaw.MyClawRoomActivityState
 import io.element.android.libraries.matrix.api.notification.CallIntent
 import io.element.android.libraries.matrix.api.room.RoomNotificationMode
 import io.element.android.libraries.matrix.ui.components.AvatarWithPresence
@@ -413,10 +412,7 @@ private fun MessagePreviewAndIndicatorRow(
 
 @Composable
 private fun MyClawRoomActivity.roomListPreview(): String {
-    return when (state) {
-        MyClawRoomActivityState.TYPING -> stringResource(CommonStrings.screen_roomlist_myclaw_typing, senderDisplayName)
-        MyClawRoomActivityState.WORKING -> stringResource(CommonStrings.screen_roomlist_myclaw_working, senderDisplayName)
-    }
+    return stringResource(CommonStrings.screen_roomlist_myclaw_working, senderDisplayName)
 }
 
 @Composable

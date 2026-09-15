@@ -149,11 +149,6 @@ open class RoomListRoomSummaryProvider : PreviewParameterProvider<RoomListRoomSu
                     activeCallIntent = CallIntent.AUDIO
                 ),
                 aRoomListRoomSummary(
-                    name = "A MyClaw typing room",
-                    latestEvent = LatestEvent.Synced("Previous message"),
-                    myClawRoomActivity = aMyClawRoomActivity(state = MyClawRoomActivityState.TYPING),
-                ),
-                aRoomListRoomSummary(
                     name = "A MyClaw working room",
                     latestEvent = LatestEvent.Synced("Previous message"),
                     myClawRoomActivity = aMyClawRoomActivity(state = MyClawRoomActivityState.WORKING),
@@ -226,12 +221,12 @@ internal fun aRoomListRoomSummary(
 
 internal fun aMyClawRoomActivity(
     roomId: RoomId = RoomId("!roomId:domain"),
-    state: MyClawRoomActivityState = MyClawRoomActivityState.TYPING,
+    state: MyClawRoomActivityState = MyClawRoomActivityState.WORKING,
 ) = MyClawRoomActivity(
     roomId = roomId,
     sessionId = "sess_123",
     state = state,
-    senderDisplayName = "Spark",
+    senderDisplayName = "Windows",
     updatedAtMillis = null,
     expiresAtMillis = Long.MAX_VALUE,
 )

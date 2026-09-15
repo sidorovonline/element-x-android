@@ -8,15 +8,19 @@
 
 package io.element.android.features.home.impl.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.TopAppBarDefaults
@@ -33,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
@@ -41,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import io.element.android.appconfig.RoomListConfig
 import io.element.android.compound.theme.ElementTheme
 import io.element.android.compound.tokens.generated.CompoundIcons
+import io.element.android.features.home.impl.HomeConnectionStatus
 import io.element.android.features.home.impl.HomeNavigationBarItem
 import io.element.android.features.home.impl.R
 import io.element.android.features.home.impl.filters.RoomListFiltersState
@@ -84,9 +90,11 @@ fun HomeTopBar(
     selectedNavigationItem: HomeNavigationBarItem,
     currentUserAndNeighbors: ImmutableList<MatrixUser>,
     showAvatarIndicator: Boolean,
+    connectionStatus: HomeConnectionStatus,
     areSearchResultsDisplayed: Boolean,
     onToggleSearch: () -> Unit,
     onMenuActionClick: (RoomListMenuAction) -> Unit,
+    onReconnectClick: () -> Unit,
     onOpenSettings: () -> Unit,
     onAccountSwitch: (SessionId) -> Unit,
     scrollBehavior: TopAppBarScrollBehavior,
@@ -129,6 +137,7 @@ fun HomeTopBar(
                 NavigationIcon(
                     currentUserAndNeighbors = currentUserAndNeighbors,
                     showAvatarIndicator = showAvatarIndicator,
+                    connectionStatus = connectionStatus,
                     onAccountSwitch = onAccountSwitch,
                     onClick = onOpenSettings,
                 )
@@ -138,7 +147,9 @@ fun HomeTopBar(
                     RoomListMenuItems(
                         onToggleSearch = onToggleSearch,
                         onMenuActionClick = onMenuActionClick,
+                        onReconnectClick = onReconnectClick,
                         canReportBug = canReportBug,
+                        connectionStatus = connectionStatus,
                         spaceFiltersState = spaceFiltersState,
                     )
                 }
@@ -164,7 +175,9 @@ fun HomeTopBar(
 private fun RowScope.RoomListMenuItems(
     onToggleSearch: () -> Unit,
     onMenuActionClick: (RoomListMenuAction) -> Unit,
+    onReconnectClick: () -> Unit,
     canReportBug: Boolean,
+    connectionStatus: HomeConnectionStatus,
     spaceFiltersState: SpaceFiltersState,
 ) {
     IconButton(
@@ -176,7 +189,8 @@ private fun RowScope.RoomListMenuItems(
         )
     }
     SpaceFilterButton(spaceFiltersState = spaceFiltersState)
-    if (RoomListConfig.HAS_DROP_DOWN_MENU) {
+    val showReconnect = connectionStatus == HomeConnectionStatus.ErrorOffline
+    if (RoomListConfig.HAS_DROP_DOWN_MENU || showReconnect) {
         var showMenu by remember { mutableStateOf(false) }
         IconButton(
             onClick = { showMenu = !showMenu }
@@ -190,6 +204,22 @@ private fun RowScope.RoomListMenuItems(
             expanded = showMenu,
             onDismissRequest = { showMenu = false }
         ) {
+            if (showReconnect) {
+                DropdownMenuItem(
+                    onClick = {
+                        showMenu = false
+                        onReconnectClick()
+                    },
+                    text = { Text(stringResource(id = CommonStrings.action_reconnect)) },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = CompoundIcons.Restart(),
+                            tint = ElementTheme.colors.iconSecondary,
+                            contentDescription = null,
+                        )
+                    }
+                )
+            }
             if (RoomListConfig.SHOW_INVITE_MENU_ITEM) {
                 DropdownMenuItem(
                     onClick = {
@@ -263,6 +293,7 @@ private fun SpaceFilterButton(
 private fun NavigationIcon(
     currentUserAndNeighbors: ImmutableList<MatrixUser>,
     showAvatarIndicator: Boolean,
+    connectionStatus: HomeConnectionStatus,
     onAccountSwitch: (SessionId) -> Unit,
     onClick: () -> Unit,
 ) {
@@ -271,6 +302,7 @@ private fun NavigationIcon(
             matrixUser = currentUserAndNeighbors.single(),
             isCurrentAccount = true,
             showAvatarIndicator = showAvatarIndicator,
+            connectionStatus = connectionStatus,
             onClick = onClick,
         )
     } else {
@@ -291,6 +323,7 @@ private fun NavigationIcon(
                 matrixUser = currentUserAndNeighbors[page],
                 isCurrentAccount = page == 1,
                 showAvatarIndicator = page == 1 && showAvatarIndicator,
+                connectionStatus = connectionStatus.takeIf { page == 1 },
                 onClick = if (page == 1) {
                     onClick
                 } else {
@@ -306,6 +339,7 @@ private fun AccountIcon(
     matrixUser: MatrixUser,
     isCurrentAccount: Boolean,
     showAvatarIndicator: Boolean,
+    connectionStatus: HomeConnectionStatus?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -320,25 +354,71 @@ private fun AccountIcon(
                     matrixUser.getAvatarData(size = AvatarSize.CurrentUserTopBar)
                 }
             }
+            val settingsContentDescription = if (isCurrentAccount) {
+                val settingsLabel = if (showAvatarIndicator) {
+                    stringResource(CommonStrings.a11y_settings_with_required_action)
+                } else {
+                    stringResource(CommonStrings.common_settings)
+                }
+                connectionStatus?.let {
+                    stringResource(
+                        id = CommonStrings.screen_home_a11y_settings_with_connection_status,
+                        settingsLabel,
+                        stringResource(id = it.labelRes()),
+                    )
+                } ?: settingsLabel
+            } else {
+                null
+            }
             Avatar(
                 avatarData = avatarData,
                 avatarType = AvatarType.User,
-                contentDescription = if (isCurrentAccount) {
-                    if (showAvatarIndicator) {
-                        stringResource(CommonStrings.a11y_settings_with_required_action)
-                    } else {
-                        stringResource(CommonStrings.common_settings)
-                    }
-                } else {
-                    null
-                },
+                contentDescription = settingsContentDescription,
             )
+            connectionStatus?.let {
+                ConnectionStatusBadge(
+                    status = it,
+                    modifier = Modifier.align(Alignment.BottomEnd),
+                )
+            }
             if (showAvatarIndicator) {
                 RedIndicatorAtom(
                     modifier = Modifier.align(Alignment.TopEnd)
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ConnectionStatusBadge(
+    status: HomeConnectionStatus,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .size(12.dp)
+            .border(1.dp, ElementTheme.colors.bgCanvasDefault, CircleShape)
+            .padding(1.dp)
+            .clip(CircleShape)
+            .background(status.color())
+    )
+}
+
+@Composable
+private fun HomeConnectionStatus.color(): Color {
+    return when (this) {
+        HomeConnectionStatus.Connected -> ElementTheme.colors.iconSuccessPrimary
+        HomeConnectionStatus.Connecting -> ElementTheme.colors.iconSecondary
+        HomeConnectionStatus.ErrorOffline -> ElementTheme.colors.iconCriticalPrimary
+    }
+}
+
+private fun HomeConnectionStatus.labelRes(): Int {
+    return when (this) {
+        HomeConnectionStatus.Connected -> CommonStrings.screen_home_connection_status_connected
+        HomeConnectionStatus.Connecting -> CommonStrings.screen_home_connection_status_connecting
+        HomeConnectionStatus.ErrorOffline -> CommonStrings.screen_home_connection_status_error_offline
     }
 }
 
@@ -350,11 +430,13 @@ internal fun HomeTopBarPreview() = ElementPreview {
         selectedNavigationItem = HomeNavigationBarItem.Chats,
         currentUserAndNeighbors = persistentListOf(aMatrixUser(id = "@id:domain", displayName = USER_NAME_ALICE)),
         showAvatarIndicator = false,
+        connectionStatus = HomeConnectionStatus.Connected,
         areSearchResultsDisplayed = false,
         scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState()),
         onOpenSettings = {},
         onAccountSwitch = {},
         onToggleSearch = {},
+        onReconnectClick = {},
         canReportBug = true,
         displayFilters = true,
         filtersState = aRoomListFiltersState(),
@@ -371,11 +453,13 @@ internal fun HomeTopBarSpaceFiltersSelectedPreview() = ElementPreview {
         selectedNavigationItem = HomeNavigationBarItem.Chats,
         currentUserAndNeighbors = persistentListOf(aMatrixUser(id = "@id:domain", displayName = USER_NAME_ALICE)),
         showAvatarIndicator = false,
+        connectionStatus = HomeConnectionStatus.Connected,
         areSearchResultsDisplayed = false,
         scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState()),
         onOpenSettings = {},
         onAccountSwitch = {},
         onToggleSearch = {},
+        onReconnectClick = {},
         canReportBug = true,
         displayFilters = true,
         filtersState = aRoomListFiltersState(),
@@ -392,11 +476,13 @@ internal fun HomeTopBarSpacesPreview() = ElementPreview {
         selectedNavigationItem = HomeNavigationBarItem.Spaces,
         currentUserAndNeighbors = persistentListOf(aMatrixUser(id = "@id:domain", displayName = USER_NAME_ALICE)),
         showAvatarIndicator = false,
+        connectionStatus = HomeConnectionStatus.Connected,
         areSearchResultsDisplayed = false,
         scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState()),
         onOpenSettings = {},
         onAccountSwitch = {},
         onToggleSearch = {},
+        onReconnectClick = {},
         canReportBug = true,
         displayFilters = false,
         filtersState = aRoomListFiltersState(),
@@ -413,11 +499,13 @@ internal fun HomeTopBarWithIndicatorPreview() = ElementPreview {
         selectedNavigationItem = HomeNavigationBarItem.Chats,
         currentUserAndNeighbors = persistentListOf(aMatrixUser(id = "@id:domain", displayName = USER_NAME_ALICE)),
         showAvatarIndicator = true,
+        connectionStatus = HomeConnectionStatus.Connected,
         areSearchResultsDisplayed = false,
         scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState()),
         onOpenSettings = {},
         onAccountSwitch = {},
         onToggleSearch = {},
+        onReconnectClick = {},
         canReportBug = true,
         displayFilters = true,
         filtersState = aRoomListFiltersState(),
@@ -434,11 +522,82 @@ internal fun HomeTopBarMultiAccountPreview() = ElementPreview {
         selectedNavigationItem = HomeNavigationBarItem.Chats,
         currentUserAndNeighbors = aMatrixUserList().take(3).toImmutableList(),
         showAvatarIndicator = false,
+        connectionStatus = HomeConnectionStatus.Connected,
         areSearchResultsDisplayed = false,
         scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState()),
         onOpenSettings = {},
         onAccountSwitch = {},
         onToggleSearch = {},
+        onReconnectClick = {},
+        canReportBug = true,
+        displayFilters = true,
+        filtersState = aRoomListFiltersState(),
+        spaceFiltersState = anUnselectedSpaceFiltersState(),
+        onMenuActionClick = {},
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@PreviewsDayNight
+@Composable
+internal fun HomeTopBarConnectingPreview() = ElementPreview {
+    HomeTopBar(
+        selectedNavigationItem = HomeNavigationBarItem.Chats,
+        currentUserAndNeighbors = persistentListOf(aMatrixUser(id = "@id:domain", displayName = USER_NAME_ALICE)),
+        showAvatarIndicator = false,
+        connectionStatus = HomeConnectionStatus.Connecting,
+        areSearchResultsDisplayed = false,
+        scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState()),
+        onOpenSettings = {},
+        onAccountSwitch = {},
+        onToggleSearch = {},
+        onReconnectClick = {},
+        canReportBug = true,
+        displayFilters = true,
+        filtersState = aRoomListFiltersState(),
+        spaceFiltersState = anUnselectedSpaceFiltersState(),
+        onMenuActionClick = {},
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@PreviewsDayNight
+@Composable
+internal fun HomeTopBarErrorOfflinePreview() = ElementPreview {
+    HomeTopBar(
+        selectedNavigationItem = HomeNavigationBarItem.Chats,
+        currentUserAndNeighbors = persistentListOf(aMatrixUser(id = "@id:domain", displayName = USER_NAME_ALICE)),
+        showAvatarIndicator = false,
+        connectionStatus = HomeConnectionStatus.ErrorOffline,
+        areSearchResultsDisplayed = false,
+        scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState()),
+        onOpenSettings = {},
+        onAccountSwitch = {},
+        onToggleSearch = {},
+        onReconnectClick = {},
+        canReportBug = true,
+        displayFilters = true,
+        filtersState = aRoomListFiltersState(),
+        spaceFiltersState = anUnselectedSpaceFiltersState(),
+        onMenuActionClick = {},
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@PreviewsDayNight
+@Composable
+internal fun HomeTopBarErrorOfflineWithIndicatorPreview() = ElementPreview {
+    HomeTopBar(
+        selectedNavigationItem = HomeNavigationBarItem.Chats,
+        currentUserAndNeighbors = persistentListOf(aMatrixUser(id = "@id:domain", displayName = USER_NAME_ALICE)),
+        showAvatarIndicator = true,
+        connectionStatus = HomeConnectionStatus.ErrorOffline,
+        areSearchResultsDisplayed = false,
+        scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState()),
+        onOpenSettings = {},
+        onAccountSwitch = {},
+        onToggleSearch = {},
+        onReconnectClick = {},
         canReportBug = true,
         displayFilters = true,
         filtersState = aRoomListFiltersState(),

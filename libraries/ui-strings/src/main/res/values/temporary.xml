@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
   <string name="action_select_text">"Select text"</string>
-  <string name="screen_roomlist_myclaw_typing">%1$s typing...</string>
   <string name="screen_roomlist_myclaw_working">%1$s working...</string>
-  <string name="screen_room_myclaw_typing">%1$s typing...</string>
   <string name="screen_room_myclaw_working">%1$s working...</string>
+  <string name="action_reconnect">"Reconnect"</string>
+  <string name="screen_home_connection_status_connected">"Connected"</string>
+  <string name="screen_home_connection_status_connecting">"Connecting"</string>
+  <string name="screen_home_connection_status_error_offline">"Offline"</string>
+  <string name="screen_home_a11y_settings_with_connection_status">"%1$s, %2$s"</string>
 </resources>

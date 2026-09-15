@@ -180,9 +180,11 @@ private fun HomeScaffold(
                 selectedNavigationItem = state.currentHomeNavigationBarItem,
                 currentUserAndNeighbors = state.currentUserAndNeighbors,
                 showAvatarIndicator = state.showAvatarIndicator,
+                connectionStatus = state.connectionStatus,
                 areSearchResultsDisplayed = roomListState.searchState.isSearchActive,
                 onToggleSearch = { roomListState.eventSink(RoomListEvent.ToggleSearchResults) },
                 onMenuActionClick = onMenuActionClick,
+                onReconnectClick = { state.eventSink(HomeEvent.RetrySync) },
                 onOpenSettings = onOpenSettings,
                 onAccountSwitch = {
                     state.eventSink(HomeEvent.SwitchToAccount(it))

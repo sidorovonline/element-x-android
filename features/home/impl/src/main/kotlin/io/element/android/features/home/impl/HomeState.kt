@@ -24,6 +24,7 @@ data class HomeState(
     val currentUserAndNeighbors: ImmutableList<MatrixUser>,
     val showAvatarIndicator: Boolean,
     val hasNetworkConnection: Boolean,
+    val connectionStatus: HomeConnectionStatus,
     val currentHomeNavigationBarItem: HomeNavigationBarItem,
     val roomListState: RoomListState,
     val homeSpacesState: HomeSpacesState,
