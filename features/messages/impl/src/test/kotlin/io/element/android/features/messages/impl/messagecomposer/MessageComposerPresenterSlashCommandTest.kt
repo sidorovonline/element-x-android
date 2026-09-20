@@ -9,6 +9,15 @@
 
 package io.element.android.features.messages.impl.messagecomposer
 
+import io.element.android.libraries.matrix.api.MatrixClient
+import io.element.android.libraries.matrix.api.core.DeviceId
+import io.element.android.libraries.matrix.api.room.RoomMembersState
+import kotlinx.collections.immutable.persistentListOf
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import java.security.KeyPairGenerator
+import java.security.Signature
+import java.util.Base64
 import android.net.Uri
 import app.cash.turbine.ReceiveTurbine
 import com.google.common.truth.Truth.assertThat
@@ -338,14 +347,86 @@ class MessageComposerPresenterSlashCommandTest {
 
             suggestionsState.eventSink(MessageComposerEvent.InsertSuggestion(suggestionsState.suggestions.single()))
             runCurrent()
-            assertThat(suggestionsState.textEditorState.messageHtml()).isEqualTo("/status")
+            assertThat(suggestionsState.textEditorState.messageHtml()).isEqualTo("/status ")
 
             suggestionsState.eventSink(MessageComposerEvent.SendMessage)
             advanceUntilIdle()
 
             assertThat(parsedDiscoveredCommandNames).containsExactly(setOf("status"))
-            assertThat(sentMessages).containsExactly("/status")
-            assertThat(suggestionsState.slashCommandAction.isFailure()).isFalse()
+            assertThat(sentMessages).containsExactly("/status ")
+            val resetState = expectMostRecentItem()
+            assertThat(resetState.textEditorState.messageHtml()).isEmpty()
+            assertThat(resetState.slashCommandAction.isFailure()).isFalse()
+        }
+    }
+
+    @Test
+    fun `signed DSH discovery without room state populates composer and selection stays unsent until submission`() = runTest {
+        val transport = FakeMatrixClient(sessionId = A_SESSION_ID, deviceId = A_DEVICE_ID)
+        val bot = UserId("@dsh:${A_SESSION_ID.value.substringAfter(':')}")
+        val key = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
+        val client = object : MatrixClient by transport {
+            override suspend fun verifyDeviceSignature(userId: UserId, deviceId: DeviceId, message: String, signature: String): Boolean =
+                userId == bot && deviceId.value == "DSH" && Signature.getInstance("Ed25519").run {
+                    initVerify(key.public)
+                    update(message.toByteArray())
+                    verify(Base64.getDecoder().decode(signature))
+                }
+        }
+        val sent = mutableListOf<String>()
+        val timeline = FakeTimeline().apply {
+            sendMessageLambda = { body, _, _, _, _ -> sent += body; Result.success(Unit) }
+        }
+        val room = aDmRoom(timeline).apply {
+            baseRoom.membersStateFlow.value = RoomMembersState.Ready(persistentListOf(aRoomMember(bot)))
+        }
+        val service = FakeSlashCommandService(
+            getSuggestionsWithDiscoveredResult = { _, _, discovered -> discovered },
+            parseWithDiscoveredResult = { _, _, _, names ->
+                assertThat(names).contains("visibility")
+                SlashCommand.NotACommand
+            },
+        )
+        createPresenter(room = room, slashCommandService = service, dshCommandSuggestionsDataSource = DshCommandSuggestionsDataSource(client)).test {
+            val initial = awaitFirstItem()
+            initial.textEditorState.setHtml("/visibility t")
+            initial.eventSink(MessageComposerEvent.SuggestionReceived(Suggestion(0, 13, SuggestionType.Command, "visibility t")))
+            advanceTimeBy(201)
+            runCurrent()
+            val request = Json.parseToJsonElement(transport.sentCustomToDeviceEvents.single().content).jsonObject
+            assertThat(request).doesNotContainKey("command")
+            assertThat(request).doesNotContainKey("query")
+            val payload = JsonObject(request + mapOf(
+                "type" to JsonPrimitive(DshCommandSuggestionsDataSource.RESPONSE_TYPE),
+                "sender" to JsonPrimitive(bot.value), "device_id" to JsonPrimitive("DSH"),
+                "recipient" to JsonPrimitive(A_SESSION_ID.value), "request_device" to JsonPrimitive(A_DEVICE_ID.value),
+                "issued_at" to JsonPrimitive(System.currentTimeMillis()), "expires_at" to JsonPrimitive(System.currentTimeMillis() + 15000),
+                "definitions" to Json.parseToJsonElement("[]"),
+                "commands" to Json.parseToJsonElement("""[{"name":"visibility tools","description":"Show tool details"},
+                    {"name":"visibility final","description":"Show final answers"}]"""),
+            )).toString()
+            val signature = Signature.getInstance("Ed25519").run {
+                initSign(key.private)
+                update(payload.toByteArray())
+                Base64.getEncoder().withoutPadding().encodeToString(sign())
+            }
+            transport.emitCustomToDeviceEvent(CustomToDeviceEvent(DshCommandSuggestionsDataSource.RESPONSE_TYPE, bot, JsonObject(mapOf(
+                "version" to JsonPrimitive(3), "device_id" to JsonPrimitive("DSH"),
+                "payload" to JsonPrimitive(payload), "signature" to JsonPrimitive(signature),
+            )).toString(), false))
+            advanceTimeBy(2001)
+            runCurrent()
+            val menu = expectMostRecentItem()
+            assertThat(menu.suggestions).containsExactly(ResolvedSuggestion.Command(SlashCommandSuggestion("/visibility tools", null, "Show tool details")))
+            menu.eventSink(MessageComposerEvent.InsertSuggestion(menu.suggestions.single()))
+            runCurrent()
+            assertThat(menu.textEditorState.messageHtml()).isEqualTo("/visibility tools ")
+            assertThat(sent).isEmpty()
+            menu.eventSink(MessageComposerEvent.SendMessage)
+            advanceUntilIdle()
+            assertThat(sent).containsExactly("/visibility tools ")
+            val reset = expectMostRecentItem()
+            assertThat(reset.textEditorState.messageHtml()).isEmpty()
         }
     }
 
@@ -375,6 +456,7 @@ class MessageComposerPresenterSlashCommandTest {
         threadRoot: ThreadId? = null,
         slashCommandService: SlashCommandService = FakeSlashCommandService(),
         myClawCommandSuggestionsDataSource: MyClawCommandSuggestionsDataSource = MyClawCommandSuggestionsDataSource(FakeMatrixClient()),
+        dshCommandSuggestionsDataSource: DshCommandSuggestionsDataSource = DshCommandSuggestionsDataSource(FakeMatrixClient()),
     ) = MessageComposerPresenter(
         navigator = navigator,
         sessionCoroutineScope = this,
@@ -403,7 +485,7 @@ class MessageComposerPresenterSlashCommandTest {
         richTextEditorStateFactory = TestRichTextEditorStateFactory(),
         roomAliasSuggestionsDataSource = FakeRoomAliasSuggestionsDataSource(),
         myClawCommandSuggestionsDataSource = myClawCommandSuggestionsDataSource,
-        dshCommandSuggestionsDataSource = DshCommandSuggestionsDataSource(FakeMatrixClient()),
+        dshCommandSuggestionsDataSource = dshCommandSuggestionsDataSource,
         permissionsPresenterFactory = FakePermissionsPresenterFactory(permissionPresenter),
         permalinkParser = permalinkParser,
         permalinkBuilder = permalinkBuilder,
@@ -430,6 +512,7 @@ class MessageComposerPresenterSlashCommandTest {
             baseRoom = FakeBaseRoom(
                 sessionId = A_SESSION_ID,
                 roomId = A_ROOM_ID,
+                updateMembersResult = {},
                 getDirectRoomMemberResult = {
                     aRoomMember(userId = A_USER_ID_2)
                 },

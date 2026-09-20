@@ -42,26 +42,12 @@ class DshCommandSuggestionsDataSourceTest {
     private val bot = UserId("@owned-bot:${A_SESSION_ID.value.substringAfter(':')}")
     private val transport = FakeMatrixClient(sessionId = A_SESSION_ID, deviceId = A_DEVICE_ID)
     private val key = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
-    private var serviceAvailable = true
     private var deviceTrusted = true
-    private var serviceExpiry = Long.MAX_VALUE
     private val client = object : MatrixClient by transport {
-        override suspend fun getRoomStateEvents(roomId: RoomId, eventType: String): Result<List<String>> {
-            if (!serviceAvailable) return Result.success(emptyList())
-            val payload = JsonObject(mapOf(
-                "version" to JsonPrimitive(2), "type" to JsonPrimitive(DshCommandSuggestionsDataSource.SERVICE_TYPE),
-                "sender" to JsonPrimitive(bot.value), "device_id" to JsonPrimitive("OWNED"), "room_id" to JsonPrimitive(roomId.value),
-                "issued_at" to JsonPrimitive(System.currentTimeMillis()),
-                "expires_at" to JsonPrimitive(minOf(serviceExpiry, System.currentTimeMillis() + 90000)),
-                "commands" to Json.parseToJsonElement("[\"models\",\"model\"]"),
-            )).toString()
-            return Result.success(listOf(JsonObject(mapOf(
-                "type" to JsonPrimitive(eventType), "sender" to JsonPrimitive(bot.value), "state_key" to JsonPrimitive(bot.value),
-                "content" to JsonObject(mapOf("payload" to JsonPrimitive(payload), "signature" to JsonPrimitive(sign(payload)))),
-            )).toString()))
-        }
+        override suspend fun getRoomStateEvents(roomId: RoomId, eventType: String): Result<List<String>> =
+            error("Ordinary rooms do not require command state advertisements")
         override suspend fun verifyDeviceSignature(userId: UserId, deviceId: DeviceId, message: String, signature: String): Boolean =
-            deviceTrusted && userId == bot && deviceId.value == "OWNED" && runCatching {
+            deviceTrusted && userId == bot && deviceId.value in setOf("OWNED", "SECOND") && runCatching {
                 Signature.getInstance("Ed25519").run {
                     initVerify(key.public)
                     update(message.toByteArray())
@@ -75,18 +61,24 @@ class DshCommandSuggestionsDataSourceTest {
         updateMembersResult = {},
     ).apply { membersStateFlow.value = RoomMembersState.Ready(persistentListOf(aRoomMember(bot))) })
 
-    private fun sign(payload: String): String = Signature.getInstance("Ed25519").run {
-        initSign(key.private)
-        update(payload.toByteArray())
-        Base64.getEncoder().withoutPadding().encodeToString(sign())
-    }
-
-    private fun reply(request: String, name: String, sender: UserId = bot, invalidSignature: Boolean = false): CustomToDeviceEvent {
+    private fun reply(
+        request: String,
+        name: String,
+        sender: UserId = bot,
+        invalidSignature: Boolean = false,
+        recipient: UserId = A_SESSION_ID,
+        expires: Long = System.currentTimeMillis() + 15000,
+        device: String = "OWNED",
+    ): CustomToDeviceEvent {
         val requestFields = Json.parseToJsonElement(request).jsonObject
         val data = JsonObject(requestFields + mapOf(
             "type" to JsonPrimitive(DshCommandSuggestionsDataSource.RESPONSE_TYPE),
             "sender" to JsonPrimitive(bot.value),
-            "device_id" to JsonPrimitive("OWNED"),
+            "device_id" to JsonPrimitive(device),
+            "recipient" to JsonPrimitive(recipient.value),
+            "request_device" to JsonPrimitive(A_DEVICE_ID.value),
+            "issued_at" to JsonPrimitive(System.currentTimeMillis()),
+            "expires_at" to JsonPrimitive(expires),
             "definitions" to Json.parseToJsonElement("[]"),
             "commands" to Json.parseToJsonElement("""[{"name":"$name","description":"Owned dynamic choice"}]"""),
         )).toString()
@@ -97,8 +89,8 @@ class DshCommandSuggestionsDataSourceTest {
         }
         if (invalidSignature) signature[0] = (signature[0].toInt() xor 1).toByte()
         return CustomToDeviceEvent(DshCommandSuggestionsDataSource.RESPONSE_TYPE, sender, JsonObject(mapOf(
-            "version" to JsonPrimitive(2),
-            "device_id" to JsonPrimitive("OWNED"),
+            "version" to JsonPrimitive(3),
+            "device_id" to JsonPrimitive(device),
             "payload" to JsonPrimitive(data),
             "signature" to JsonPrimitive(Base64.getEncoder().withoutPadding().encodeToString(signature)),
         )).toString(), false)
@@ -160,30 +152,30 @@ class DshCommandSuggestionsDataSourceTest {
         val secondRequest = transport.sentCustomToDeviceEvents[1].content
         transport.emitCustomToDeviceEvent(reply(secondRequest, "model owned/second"))
         runCurrent()
-        assertThat(second.await().single().command).isEqualTo("/model owned/second")
-        assertThat(first.isCompleted).isFalse()
         // A valid signature must not grant access after its sender leaves this room.
         room.baseRoom.membersStateFlow.value = RoomMembersState.Ready(persistentListOf())
         transport.emitCustomToDeviceEvent(reply(firstRequest, "model owned/first"))
         runCurrent()
         assertThat(first.isCompleted).isFalse()
         advanceTimeBy(5001)
+        assertThat(second.await().single().command).isEqualTo("/model owned/second")
         assertThat(first.await()).isEmpty()
         val requestCount = transport.sentCustomToDeviceEvents.size
         assertThat(source.getSuggestions(room, "models")).isEmpty()
         assertThat(transport.sentCustomToDeviceEvents).hasSize(requestCount)
     }
     @Test
-    fun `draft arguments stay local and only a trusted advertised device receives metadata`() = runTest {
+    fun `all draft text stays local and discovery needs no room state permission`() = runTest {
         val query = requireNotNull(CommandDiscoveryQuery.fromDraft("model\towned-unsent-sentinel"))
         val pending = async { source.getSuggestions(room, query.name, timeout = 1.seconds, completeArguments = query.completeArguments) }
         runCurrent()
         val outbound = transport.sentCustomToDeviceEvents.single()
         val fields = Json.parseToJsonElement(outbound.content).jsonObject
-        assertThat(fields["command"]).isEqualTo(JsonPrimitive("model"))
+        assertThat(fields).doesNotContainKey("command")
         assertThat(outbound.content).doesNotContain("owned-unsent-sentinel")
         assertThat(fields).doesNotContainKey("query")
-        assertThat(outbound.deviceIds).containsExactly(DeviceId("OWNED"))
+        assertThat(outbound.deviceIds).isEmpty()
+        assertThat(outbound.userId).isEqualTo(bot)
         advanceTimeBy(1001)
         assertThat(pending.await()).isEmpty()
         val unknownQuery = requireNotNull(CommandDiscoveryQuery.fromDraft("unknown\u2003private-draft"))
@@ -197,20 +189,47 @@ class DshCommandSuggestionsDataSourceTest {
     }
 
     @Test
-    fun `revoked absent and expired service stops network discovery and clears prior results`() = runTest {
+    fun `revoked trust invalidates a collected response without retaining old results`() = runTest {
         val pending = async { source.getSuggestions(room, "models") }
         runCurrent()
         transport.emitCustomToDeviceEvent(reply(transport.sentCustomToDeviceEvents.single().content, "models"))
         runCurrent()
-        assertThat(pending.await()).hasSize(1)
         deviceTrusted = false
-        assertThat(source.getSuggestions(room, "models")).isEmpty()
+        assertThat(pending.await()).isEmpty()
         deviceTrusted = true
-        serviceAvailable = false
-        assertThat(source.getSuggestions(room, "models")).isEmpty()
-        serviceAvailable = true
-        serviceExpiry = 0
-        assertThat(source.getSuggestions(room, "models")).isEmpty()
-        assertThat(transport.sentCustomToDeviceEvents).hasSize(1)
+        val next = async { source.getSuggestions(room, "help") }
+        runCurrent()
+        transport.emitCustomToDeviceEvent(reply(transport.sentCustomToDeviceEvents.last().content, "help"))
+        assertThat(next.await().single().command).isEqualTo("/help")
     }
+
+    @Test
+    fun `only local joined peers receive draft-free requests and filtering stays local`() = runTest {
+        room.baseRoom.membersStateFlow.value = RoomMembersState.Ready(persistentListOf(
+            aRoomMember(bot), aRoomMember(A_SESSION_ID), aRoomMember(UserId("@remote:elsewhere")),
+        ))
+        val pending = async { source.getSuggestions(room, "he") }
+        runCurrent()
+        val outbound = transport.sentCustomToDeviceEvents.single()
+        transport.emitCustomToDeviceEvent(reply(outbound.content, "help"))
+        assertThat(outbound.userId).isEqualTo(bot)
+        assertThat(outbound.content).doesNotContain("he")
+        assertThat(pending.await().single().command).isEqualTo("/help")
+    }
+    @Test
+    fun `wrong recipient expired and ambiguous signed catalogs are not accepted`() = runTest {
+        val pending = async { source.getSuggestions(room, "") }
+        runCurrent()
+        val request = transport.sentCustomToDeviceEvents.single().content
+        transport.emitCustomToDeviceEvent(reply(request, "help", recipient = bot))
+        transport.emitCustomToDeviceEvent(reply(request, "help", expires = 0))
+        assertThat(pending.await()).isEmpty()
+        val ambiguous = async { source.getSuggestions(room, "") }
+        runCurrent()
+        val fresh = transport.sentCustomToDeviceEvents.last().content
+        transport.emitCustomToDeviceEvent(reply(fresh, "help"))
+        transport.emitCustomToDeviceEvent(reply(fresh, "help", device = "SECOND"))
+        assertThat(ambiguous.await()).isEmpty()
+    }
+
 }

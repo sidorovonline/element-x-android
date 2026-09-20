@@ -2,36 +2,43 @@
 
 The composer consumes DSH command declarations and argument completions from Matrix to-device events. It does not call a bot HTTP endpoint, run a model, or use another bot integration. Existing independent command sources remain available.
 
-Type `/` in a mapped room to discover `/models` and `/model <provider/model>`. Selecting a row inserts the literal command. Model completions come from the current DSH catalog and refresh while the composer is open. Sending uses the normal encrypted room-message path; DSH handles recognized commands outside conversation/model work. No login command is advertised.
+Type `/` in an authorized encrypted mapped room for the full DSH Matrix catalog:
+`models`, `model`, `retry`, `help`, `status`, `stop`, `room`, `dm`, `visibility`,
+`rename` and `session`. Filtering happens as you type. A space after `model`,
+`visibility` or `dm` enables current choices; free-text titles have an argument
+hint. Selecting a row inserts its literal command and a trailing space. Sending
+remains a separate user action through the normal encrypted message path. DSH
+handles these controls without provider inference. Rename remains subject to
+ordinary room permissions; no extra powers are required for discovery or chat.
 
 ## Trust and lifecycle
 
-Discovery first reads cached joined-room state for a signed, short-lived
-`icu.victor.dsh.commands.service` advertisement. Exactly one currently joined,
-verified service device must match the room and sender. Ambiguous, expired,
-revoked or absent services receive no discovery requests. The bot must have
-permission to publish its own room-state advertisement.
+Version-3 `icu.victor.dsh.commands.request` is sent to up to 32 other joined
+members on the account's own server. It contains only a random nonce, shared room
+ID, own device ID and bounded result limit. No composer text, command name,
+prefix or argument is sent. No room-state advertisement or special room setup is
+needed. The backend responds only for an allowed joined requester with an already
+trusted device in an existing unblocked encrypted DSH mapping.
 
-Version-2 `icu.victor.dsh.commands.request` targets only that verified device and
-contains a nonce, room/device binding, limit and optional **declared command name**.
-Unsent arguments are never transmitted: all argument-prefix matching happens
-locally. Unknown command drafts send no draft text. The independent command source
-continues to receive only the command-name prefix, never arguments. A shared
-composer boundary separates the name at any Unicode whitespace (including tabs),
-rejects controls/malformed or overlong input, and passes only the normalized name
-to either discovery consumer. The argument-completion flag carries no argument
-text. Filtering stays in the composer and never changes the literal sent command.
+The client gathers responses for two seconds within a five-second total bound.
+Exactly one signed service-device response is required. Responses bind sender,
+recipient, both devices, room and nonce with a short expiration. Native SDK
+trusted device keys verify signatures; response-supplied keys are never trusted.
+Membership and trust are rechecked at use. Results are replaced on refresh and
+cleared on cancellation/failure, with no persistent discovery catalog. Multiple
+responding services fail closed rather than arbitrarily choosing one.
 
-Responses use `icu.victor.dsh.commands.response` with a signed UTF-8 payload bound
-to sender/device, nonce, room and command name. The SDK verifies the stored trusted
-device key; response-supplied keys are never trusted. Membership and the current
-service advertisement are checked again on receipt. Requests have a five-second
-bound and refresh every five seconds while completion is open. The visible and
-parser catalog is replaced on every result, cleared on failure/cancellation, and
-scoped to the current room/account. Only an explicitly selected literal can be
-sent after expiry; it never becomes an autocomplete authorization cache.
+Declarations and dynamic choices come from DSH, not a hardcoded visual list.
+All filtering is local. The separate working MyClaw source still receives only
+its command-name prefix, never unsent arguments, and uses its own protocol.
+Selecting a literal command does not grant execution authority; DSH checks that
+again on actual submission. Titles are free text, not suggested or transmitted
+while composing. Login is not advertised.
 
-Commands are generic descriptors (`name`, `description`, optional `argument_hint`); completions can include an exact argument after the declared name. Model names are not compiled into the app. Backend authorization remains authoritative when a command is sent.
+Both this app update and the version-3 DSH plugin must be delivered. Updating the
+backend cannot change an already installed client. Generic Matrix clients may
+send typed commands but do not automatically gain this composer menu. Visual
+acceptance on the user's device is distinct from protocol/build validation.
 
 ## Reproducible SDK and app build
 
@@ -79,3 +86,11 @@ and home connection tests in the same container. The source branch preserves the
 two unpublished Markdown commits and the meaningful Home/activity source changes
 from the protected app checkout; generated QA artifacts and private notes are not
 build dependencies. Existing independent MyClaw autocomplete remains separate.
+
+For an app-only change with unchanged locked SDK sources, an existing generated
+AAR from this exact source-build lineage can be retained if its digest and source
+provenance are recorded. Build the app with `:app:assembleFdroidDebug` in the same
+containerized toolchain; no SDK API or native-library replacement is needed for
+version-3 discovery. Verify package, version, ABI and signing certificate against
+the prior delivered APK before distributing an update. Do not uninstall or erase
+app data to bypass a signing mismatch.
